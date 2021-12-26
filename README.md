@@ -1,6 +1,7 @@
 # Host commands processing library
 
-Use to create multi-parameter command processor for your device, getting input from host or main controller hardware via serial interface.  
+Use to create multi-parameter and non-blocking command processor for your device,
+getting input from host or main controller hardware using Stream class interface.  
 E.g.:
 
         SETRGBCOLOR led1 255 255 255
@@ -72,7 +73,7 @@ Remember "Some_command" with int, quoted str arguments?
 
 Now with this command we need device's full attention
 
-                 while( ! hc.is_command_complete() )
+                 do
                  {
 
 We can get here -1 on error, or 0, 1 for indexes
@@ -97,7 +98,10 @@ Be aware, that `get_str()` always return the pointer to the beginning of the int
 
                          break;
                      }//switch param index
-                 }//while command is incomplete
+
+                     while( ! hc.has_next_paramerer() )
+                         delay(100);
+                 } while( ! hc.is_command_complete() );
             }// command id 2: "Some_command"
         }//loop
 
@@ -137,9 +141,11 @@ Processing methods:
 * `int get_command_id()` - Return `id` or index of the current command being processed. -1 if there are no command data. 0 - based
 * `String get_command_name()` - Return current command's name or `""` if none.
 * `bool is_command_complete()` - Return `true` if current command's processing is complete and you may pass to the next.
+* `bool is_invalid_input()` - Return `true` if last attempt to parse data resulted in invalid state.
 * `bool has_next_parameter()` - Return `true` if there are next parameter's data available.
 * `int get_parameter_index()` - Return the index of the current parameter. 0 - based
 * `uint32_t get_parameter_info()` - Return internal bitmask with parameter definition. Well, in case you want to process parameters by type, disregarding their positions.
+* `bool is_optional()` - Return `true` if current parameter is optional
 
 Getters:
 * `bool get_bool()` - Return boolean representation of parameter's data.  
