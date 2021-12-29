@@ -6,13 +6,12 @@
   usually coming via Arduino framework's "Serial" class interface.
 */
 
-using namespace std;
-
 #if defined(HOST_CMD_TEST)
 #include "tests/test_Stream.hpp"
 #include <string>
 
 #else
+// NOTE: "use namespace std" is incompatible with Arduino.h!
 #include <Arduino.h>
 #include <Stream.h>
 
@@ -22,12 +21,12 @@ using namespace std;
 #include <limits.h>
 #include <vector>
 
-struct host_command_element //< internal: command's definition
+typedef struct //< internal: command's definition
 {
     String name;         //< command's name
     int optional_start;  //< start of optional parameters
-    vector<uint32_t> params;   //< array of param types and flags
-};
+    std::vector<uint32_t> params;   //< array of param types and flags
+} host_command_element;
 
 /* Main class */
 class host_command
@@ -80,7 +79,7 @@ public:
     bool     fill_buffer(char*, int);
 
 private:
-    vector<host_command_element*> commands; //< array of definitions
+    std::vector<host_command_element*> commands; //< array of definitions
     int cur_cmd;    //< index into commands or -1 - incomplete or -2 - not in list
     int cur_param;  //< index of the current param available. -1 if none
     uint32_t flags;      //< behavior changing settings. see host_cmd_flag_*
