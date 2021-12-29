@@ -6,9 +6,11 @@
   usually coming via Arduino framework's "Serial" class interface.
 */
 
-#if defined(HOST_CMD_TEST)
 using namespace std;
+
+#if defined(HOST_CMD_TEST)
 #include "tests/test_Stream.hpp"
+#include <string>
 
 #else
 #include <Arduino.h>
@@ -16,9 +18,9 @@ using namespace std;
 
 #endif
 
-#include <string>
-#include <vector>
 #include <stdint.h>
+#include <limits.h>
+#include <vector>
 
 struct host_command_element //< internal: command's definition
 {
@@ -83,7 +85,7 @@ private:
     int cur_param;  //< index of the current param available. -1 if none
     uint32_t flags;      //< behavior changing settings. see host_cmd_flag_*
     uint8_t* buf;        //< internal: temporary buffer
-    size_t buf_len;         //< internal: length of the buffer needed
+    int buf_len;         //< internal: length of the buffer needed
     int buf_pos;         //< internal: pos into buffer where a new char will be stored
     uint32_t state;      //< internal: state flags (bitfield actually)
     int err_code;        //< last error code

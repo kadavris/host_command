@@ -55,7 +55,7 @@ const int host_command_error_invalid_param_spec = 5; //< invalid parameters spec
 * 
 * @param s1: string 1
 * @param s2: string 2
-* @return true if equal, false is not
+* @return bool: true if equal, false is not
 */
 static bool same_strings(const char* s1, const char* s2)
 {
@@ -77,11 +77,22 @@ static bool same_strings(const char* s1, const char* s2)
     return true;
 }
 
-const char* const host_command::errstr() //< return error description
+/**
+ * @brief return last error description
+ * 
+ * @return const char* const 
+ */
+const char* const host_command::errstr()
 {
     return host_command_errors[err_code];
 }
 
+/**
+ * @brief Internal: initialazes class data 
+ * 
+ * @param _bs size_t: Buffer size
+ * @param s Stream*: Source of commands
+ */
 void host_command::_init(size_t _bs, Stream* s)
 {
     source = s;
@@ -94,11 +105,22 @@ void host_command::_init(size_t _bs, Stream* s)
     init_for_new_input(cbstate_clean);
 }
 
+/**
+ * @brief Construct a new host_command object
+ * 
+ * @param _bs size_t: Buffer size
+ */
 host_command::host_command(size_t _bs)
 {
-    _init( _bs, Serial );
+    _init( _bs, &Serial );
 }
 
+/**
+ * @brief Construct a new host_command object
+ * 
+ * @param _bs size_t: Buffer size
+ * @param src Stream*: Source of commands
+ */
 host_command::host_command( size_t _bs, Stream* src )
 {
     _init( _bs, src );
@@ -113,7 +135,7 @@ host_command::~host_command()
 /**
  * @brief Internal: reset to process next input command
  * 
- * @param initial state 
+ * @param uint32_t: initial state after reset
  */
 void host_command::init_for_new_input( uint32_t _state )
 {
@@ -124,12 +146,12 @@ void host_command::init_for_new_input( uint32_t _state )
     buf[0] = '\0';
     err_code = 0;
 }
-/** @brief set interactive mode on/off. if true then we'll produce some answer/error messages to host sometimes
+/**
+* @brief set interactive mode on/off. if true then we'll produce some answer/error messages to host sometimes
 * 
 * @param bool: new mode
 * @return void
- *
- */
+*/
 void host_command::set_interactive( bool _mode, String *_prompt = nullptr )
 {
     if ( _mode )
@@ -140,6 +162,11 @@ void host_command::set_interactive( bool _mode, String *_prompt = nullptr )
     prompt = _prompt;
 }
 
+/**
+ * @brief Enables or disables use of escape character '\'
+ * 
+ * @param bool: _mode 
+ */
 void host_command::allow_escape( bool _mode )
 {
     if (_mode)
@@ -172,7 +199,7 @@ int host_command::new_command(String _name, String _params)
     uint32_t param_info = 0;
     uint32_t param_len = 0;
 
-    for (int i = 0; i < _params.length(); ++i)
+    for (unsigned i = 0; i < _params.length(); ++i)
     {
         switch (_params[i])
         {
@@ -311,7 +338,7 @@ void host_command::optional_from_here(void)
     auto cmd = commands.back();
 
     if (cmd->optional_start == INT_MAX)
-        cmd->optional_start = (int)(cmd->params.size()) + 1;
+        cmd->optional_start = (int)(cmd->params.size());
 }
 
 /**
@@ -370,7 +397,7 @@ bool host_command::is_invalid_input()
 bool host_command::is_command_complete()
 {
     return cur_cmd == -1 || ( state & (cbstate_EOL | cbstate_invalid) )
-           || cur_param + 1 == commands[cur_cmd]->params.size();
+           || cur_param + 1 == (int)commands[cur_cmd]->params.size();
 }
 
 /**
@@ -458,7 +485,7 @@ int host_command::check_input( )
     if ( cur_cmd > -1 && (state & cbstate_complete) ) // have previous parameter complete
     {
         // if got all params already and we're in the complete state, then init for next command
-        if ( cur_param + 1 == commands[ cur_cmd ]->params.size() ) // no params or last one
+        if ( cur_param + 1 == (int)commands[ cur_cmd ]->params.size() ) // no params or last one
         {
             init_for_new_input( cbstate_clean );
         }
@@ -558,7 +585,7 @@ int host_command::check_input( )
                 state |= cbstate_EOL;
 
                 // checking if this or next param is not optional
-                if ( buf_pos == 0 || (cur_param + 1 < cmd->params.size() && cur_param + 1 < cmd->optional_start))
+                if ( buf_pos == 0 || (cur_param + 1 < (int)cmd->params.size() && cur_param + 1 < cmd->optional_start))
                 {
                     if ( flags & host_cmd_flag_interactive )
                     {
@@ -662,7 +689,7 @@ int host_command::check_input( )
 */
 int host_command::find_command_index(const char* _name)
 {
-    for ( int i = 0; i < commands.size(); ++i)
+    for ( unsigned i = 0; i < commands.size(); ++i)
     {
         if (same_strings(commands[i]->name.c_str(), (char*)_name))
             return i;
