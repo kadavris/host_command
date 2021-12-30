@@ -97,9 +97,8 @@ void host_command::_init(size_t _bs, Stream* s)
 {
     source = s;
     s->setTimeout(1); // do not wait on commands
-    buf_len = _bs;
+    buf_len = (int)_bs;
     buf = new uint8_t[buf_len];
-    prompt = nullptr;
     flags = host_cmd_flag_escapes;
 
     init_for_new_input(cbstate_clean);
@@ -146,13 +145,14 @@ void host_command::init_for_new_input( uint32_t _state )
     buf[0] = '\0';
     err_code = 0;
 }
+
 /**
 * @brief set interactive mode on/off. if true then we'll produce some answer/error messages to host sometimes
 * 
 * @param bool: new mode
 * @return void
 */
-void host_command::set_interactive( bool _mode, String *_prompt = nullptr )
+void host_command::set_interactive( bool _mode, const char* _prompt = nullptr )
 {
     if ( _mode )
         flags |= host_cmd_flag_interactive;
@@ -348,12 +348,10 @@ void host_command::optional_from_here(void)
 */
 bool host_command::get_next_command()
 {
-    discard();
+    if (is_command_complete())
+        discard();
 
-    if (check_input() <= 0)
-        return false;
-
-    return true;
+    return check_input() > 0;
 }
 
 /**
@@ -390,14 +388,24 @@ bool host_command::is_invalid_input()
 }
 
 /**
-* @brief Check if current command processing is done
+* @brief Check if current command processing is formally done
 *
 * @return bool: true if complete
+*
+* Note that return valuee here depends not only on error, no command, or command with EOL received,
+* but also
+* 1) if current parameter is optional
+* 2) or if current parameter is the last and received complete
 */
 bool host_command::is_command_complete()
 {
-    return cur_cmd == -1 || ( state & (cbstate_EOL | cbstate_invalid) )
-           || cur_param + 1 == (int)commands[cur_cmd]->params.size();
+    if( cur_cmd == -1 || ( state & (cbstate_EOL | cbstate_invalid) )
+        || is_optional() 
+        || (int)commands[cur_cmd]->params.size() == 0 )
+        return true;
+
+    // if it is the last parameter and is already complete?
+    return state & cbstate_complete && cur_param + 1 == (int)commands[cur_cmd]->params.size();
 }
 
 /**
@@ -407,13 +415,10 @@ bool host_command::is_command_complete()
 */
 bool host_command::has_next_parameter()
 {
-    if (is_command_complete())
+    if (no_more_parameters())
         return false;
         
-    if (check_input() <= 0)
-        return false;
-
-    return true;
+    return check_input() > 0;
 }
 
 /**
@@ -424,9 +429,6 @@ bool host_command::has_next_parameter()
 int host_command::get_parameter_index()
 {
     if (cur_cmd == -1)
-        return -1;
-
-    if (cur_param == -1 && check_input() <= 0)
         return -1;
 
     return cur_param;
@@ -457,6 +459,21 @@ bool host_command::is_optional()
     
     return cur_param >= commands[cur_cmd]->optional_start;
 }
+
+/**
+ * @brief return true if all possible parameters were received, including optional ones
+ *
+ * @return bool
+ */
+bool host_command::no_more_parameters()
+{
+    if( cur_cmd == -1 || state & ( cbstate_EOL | cbstate_invalid )
+        || (int)commands[cur_cmd]->params.size() == 0 )
+        return true;
+
+    // if it is the last parameter and is already complete?
+    return state & cbstate_complete && cur_param + 1 == (int)commands[cur_cmd]->params.size();
+} 
 
 /**
 * @brief Discard the current input and force wait for a new command to arrive if needed
@@ -517,8 +534,8 @@ int host_command::check_input( )
             if ( flags & host_cmd_flag_interactive )
                 source->println( "\n? Too long input discarded till EOL." );
     
-            if ( prompt != nullptr )
-                source->print( *prompt );
+            if ( prompt.length() > 0 )
+                source->print( prompt );
 
             discard();
         }
@@ -530,7 +547,7 @@ int host_command::check_input( )
 
         if( state & cbstate_invalid ) // waiting for invalidated input to be ended with LF
         {
-            if( c == '\n' )
+            if ( c == '\n' || c == '\r' )
                 init_for_new_input( cbstate_clean );
 
             continue;
@@ -546,19 +563,25 @@ int host_command::check_input( )
         }
 
         // always drop leading spaces
-        if ( c != '\n' && buf_pos == 0 && !(state & cbstate_got_quotes) && isspace(c))
+        if ( buf_pos == 0 && c != '\n' && c != '\r' && !(state & cbstate_got_quotes) && isspace(c))
         {
             continue;
         }
 
-        if ( isspace(c) ) // checking for EOL or end of cmd/param
+        if ( c == '\n' || c == '\r' || c == ' ' || c == '\t' ) // checking for EOL or end of cmd/param
         {
-            if (!(state & cbstate_got_some) && c == '\n') // skipping empty lines quick
+            if (!(state & cbstate_got_some) && ( c == '\n' || c == '\r' ) ) // skipping empty lines quick
                 continue;
 
             if ( state & cbstate_cmd ) // command name
             {
-                if (c == '\n')
+                //if (buf_pos == 0)
+                //{
+                //    init_for_new_input(cbstate_clean);
+                //    continue;
+                //}
+
+                if ( c == '\n' || c == '\r' )
                     state |= cbstate_EOL;
 
                 state |= cbstate_complete;
@@ -580,7 +603,7 @@ int host_command::check_input( )
                 continue;
             }
 
-            if ( c == '\n' )
+            if ( c == '\n' || c == '\r' )
             {
                 state |= cbstate_EOL;
 
@@ -593,8 +616,8 @@ int host_command::check_input( )
                         source->println( cur_param + 1 );
                     }
 
-                    if ( prompt != nullptr )
-                        source->print( *prompt );
+                    if ( prompt.length() > 0)
+                        source->print( prompt );
 
                     err_code = host_command_error_required_missing;
 
@@ -609,7 +632,7 @@ int host_command::check_input( )
             buf[buf_pos] = '\0';
 
             return 1; // got another complete parameter
-        } // got isspace()
+        } // got space
 
         if ( (flags & host_cmd_flag_escapes) && c == '\\' )
         {
@@ -670,8 +693,8 @@ int host_command::check_input( )
         if (flags & host_cmd_flag_interactive)
             source->println("\nUnknown command.");
 
-        if (prompt != nullptr)
-            source->print(*prompt);
+        if (prompt.length() > 0)
+            source->print( prompt );
 
         init_for_new_input(cbstate_invalid);
 
@@ -708,10 +731,7 @@ int host_command::find_command_index(const char* _name)
  */
 bool host_command::get_bool( )
 {
-    if ( cur_cmd == -1 || state & cbstate_invalid )
-        return false;
-
-    if (cur_param == -1 && check_input() <= 0)
+    if ( cur_cmd == -1 || state & cbstate_invalid || cur_param == -1 )
         return false;
 
     // assume that we'll deal with 'ok','on','true','y','yes' or non-zero number as true
@@ -749,10 +769,7 @@ bool host_command::get_bool( )
  */
 uint8_t host_command::get_byte( )
 {
-    if (cur_cmd == -1 || state & cbstate_invalid)
-        return 0;
-
-    if (cur_param == -1 && check_input() <= 0)
+    if (cur_cmd == -1 || state & cbstate_invalid || cur_param == -1 )
         return 0;
 
     return buf[0];
@@ -765,10 +782,7 @@ uint8_t host_command::get_byte( )
  */
 int host_command::get_int( )
 {
-    if (cur_cmd == -1 || state & cbstate_invalid)
-        return 0;
-
-    if (cur_param == -1 && check_input() <= 0)
+    if (cur_cmd == -1 || state & cbstate_invalid || cur_param == -1 )
         return 0;
 
     return atoi( (char*)buf );
@@ -781,10 +795,7 @@ int host_command::get_int( )
  */
 float host_command::get_float()
 {
-    if (cur_cmd == -1 || state & cbstate_invalid)
-        return 0.0f;
-
-    if (cur_param == -1 && check_input() <= 0)
+    if (cur_cmd == -1 || state & cbstate_invalid || cur_param == -1 )
         return 0.0f;
 
     return (float)atof( (char*)buf );
@@ -797,14 +808,11 @@ float host_command::get_float()
  */
 const char* host_command::get_str()
 {
-    if (cur_cmd == -1 || state & cbstate_invalid)
+    if (cur_cmd == -1 || state & cbstate_invalid || cur_param == -1 )
     {
         buf[0] = '\0';
         return (const char*)buf;
     }
-
-    if (cur_param == -1)
-        check_input();
 
     buf[buf_pos] = '\0';
 

@@ -12,7 +12,7 @@
 #include "test_Stream.hpp"
 #include "../host_command.hpp"
 
-test_Stream* Serial = nullptr;
+test_Stream Serial;
 
 // test_Stream members:
 const char* test_Stream_tag = ". test_Stream: ";

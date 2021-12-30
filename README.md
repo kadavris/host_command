@@ -50,7 +50,8 @@ Note that this list numbering is mirroring the actual internal index
 
         loop()
         {
-            if ( ! hc.get_next_command() )
+            // check for hext argument or a new command
+            if ( hc.no_more_parameters() && ! hc.get_next_command() )
             {
                 do_something_else();
                 return;
@@ -75,6 +76,9 @@ Now with this command we need device's full attention
 
                  do
                  {
+                     // check input if next parameter is available
+                     if ( ! hc.has_next_parameter() )
+                         continue;
 
 We can get here -1 on error, or 0, 1 for indexes
 
@@ -140,7 +144,14 @@ Processing methods:
 * `bool get_next_command()` - request to begin processing of new command from the input stream. Return `true` if new command is available
 * `int get_command_id()` - Return `id` or index of the current command being processed. -1 if there are no command data. 0 - based
 * `String get_command_name()` - Return current command's name or `""` if none.
-* `bool is_command_complete()` - Return `true` if current command's processing is complete and you may pass to the next.
+* `bool is_command_complete()` - Return `true` if current command's processing is _formally_ complete and you may pass to the next.  
+  Note that return valuee here depends not only on error, no command, or command with EOL received, but also
+  1) if current parameter is optional
+  2) or if current parameter is the last and received complete
+
+  To make sure that all parameters were processed use `no_more_parameters()`
+* `bool no_more_parameters()` - Return true if all possible parameters were recieved, including optional ones.  
+  This status differ from `is_command_complete()` by accounting for optional parameters too and if there is stil no EOL.
 * `bool is_invalid_input()` - Return `true` if last attempt to parse data resulted in invalid state.
 * `bool has_next_parameter()` - Return `true` if there are next parameter's data available.
 * `int get_parameter_index()` - Return the index of the current parameter. 0 - based
@@ -161,4 +172,4 @@ Other public members:
 * `void allow_escape(bool is_on)` - allow the use of escape character `'\'` to mask special characters like end of line or space.  
 **Enabled by default.**
 * `void discard()` - reset the state and prepare for the next command.  
-If current command is still incomplete it will skip all input up to EOL: `'\n'`
+If current command is still incomplete it will skip all input up to the next EOL character: `CR or LF`

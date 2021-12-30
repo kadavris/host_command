@@ -44,10 +44,10 @@ public:
 
 };
 
-extern test_Stream* Serial;
+extern test_Stream Serial;
 
-#define Stream test_Stream
-#define String string
+using Stream = test_Stream;
+using String = std::string;
 
 #ifdef _MSC_VER
 #include <windows.h>
