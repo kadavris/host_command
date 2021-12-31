@@ -7,7 +7,7 @@
 */
 
 #if defined(HOST_CMD_TEST)
-#include "tests/test_Stream.hpp"
+#include "../tests/test_Stream.hpp"
 #include <string>
 
 #else

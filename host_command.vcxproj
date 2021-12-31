@@ -116,6 +116,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;HOST_CMD_TEST=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
+      <AdditionalIncludeDirectories>include</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -139,11 +140,11 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="host_command.hpp" />
+    <ClInclude Include="include\host_command.hpp" />
     <ClInclude Include="tests\test_Stream.hpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="host_command.cpp" />
+    <ClCompile Include="src\host_command.cpp" />
     <ClCompile Include="tests\gtest-all.cc" />
     <ClCompile Include="tests\tests.cpp" />
     <ClCompile Include="tests\test_Stream.cpp" />

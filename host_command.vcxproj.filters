@@ -15,10 +15,10 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="host_command.hpp">
+    <ClInclude Include="tests\test_Stream.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="tests\test_Stream.hpp">
+    <ClInclude Include="include\host_command.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
@@ -26,13 +26,13 @@
     <ClCompile Include="tests\tests.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="host_command.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="tests\gtest-all.cc">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="tests\test_Stream.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\host_command.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

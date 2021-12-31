@@ -12,7 +12,7 @@
 // Using Google Test
 #include "gtest/gtest.h"
 #include "test_Stream.hpp"
-#include "../host_command.hpp"
+#include "../include/host_command.hpp"
 
 //===================================================================
 namespace {
