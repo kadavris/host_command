@@ -77,8 +77,11 @@ Now with this command we need device's full attention
                  do
                  {
                      // check input if next parameter is available
-                     if ( ! hc.has_next_parameter() )
+                     if ( ! hc.has_next_paramerer() )
+					 {
+                         delay(100);
                          continue;
+                     }
 
 We can get here -1 on error, or 0, 1 for indexes
 
@@ -103,10 +106,11 @@ Be aware, that `get_str()` always return the pointer to the beginning of the int
                          break;
                      }//switch param index
 
-                     while( ! hc.has_next_paramerer() )
-                         delay(100);
+                 // we have no optional parameters for this command. so it is safe to use relaxed status function:
                  } while( ! hc.is_command_complete() );
+
             }// command id 2: "Some_command"
+
         }//loop
 
 ## Quick reference

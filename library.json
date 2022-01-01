@@ -1,6 +1,6 @@
 {
   "name": "HostCommand",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "Multi-parameter and non-blocking command line parser, getting input from PC host or main controller hardware using Stream class interface.",
   "keywords": "command line, command processor, command parser, Serial, Stream",
   "repository":
@@ -30,5 +30,14 @@
         "x32",
         "x64"
     ]
-  }
+  },
+  "examples": [
+    {
+        "name": "ESP8266 as a relay to MQTT",
+        "base": "examples/",
+        "files": [
+            "example_relay_to_mqtt.ino"
+        ]
+    }
+  ]
 }
