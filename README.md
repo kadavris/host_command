@@ -129,7 +129,7 @@ Setup methods:
   The second parameter uses printf-like codes to define parameters for a command.  
   Format is slightly simpler though: [?][length][type]
   *   ? - this marks beginning of optional parameters
-  *   length - integer. set the _maximum_ input length.
+  *   length - integer. set the _maximum_ input length for **string types**.
   *   type - much as in printf: `b`-bool, `c`-byte, `d`-int, `f`-float, `s`-string, `q`-quoted string
 
   Spaces also allowed for readability
@@ -139,9 +139,9 @@ Setup methods:
 * `void add_int_param()` - appends integer number parameter to the current command's arguments list
 * `void add_float_param()` - appends floating point number parameter to the current command's arguments list
 * `void add_str_param( int max_length )` - appends string parameter to the current command's arguments list.  
-`max_length` is optional and limits the length of input string. Default is 65535
+`max_length` is optional and limits the length of input string. Default is for it to fit into your buffer
 * `void add_qstr_param( int max_length )` - appends quoted string parameter to the current command's arguments list.  
-`max_length` is optional and limits the length of input string. Default is 65535
+`max_length` is optional and limits the length of input string. Default is for it to fit into your buffer
 * `void optional_from_here()` - the next parameters added will be treated as optional. This means that no error will be generated if some will be omitted on input
 
 Processing methods:
@@ -149,11 +149,10 @@ Processing methods:
 * `int get_command_id()` - Return `id` or index of the current command being processed. -1 if there are no command data. 0 - based
 * `String get_command_name()` - Return current command's name or `""` if none.
 * `bool is_command_complete()` - Return `true` if current command's processing is _formally_ complete and you may pass to the next.  
-  Note that return valuee here depends not only on error, no command, or command with EOL received, but also
+  Note that return value here depends not only on the error state, no command present, or complete command with EOL received, but also:
   1) if current parameter is optional
   2) or if current parameter is the last and received complete
-
-  To make sure that all parameters were processed use `no_more_parameters()`
+  Thus to make sure that **all** parameters were processed use `no_more_parameters()`
 * `bool no_more_parameters()` - Return true if all possible parameters were recieved, including optional ones.  
   This status differ from `is_command_complete()` by accounting for optional parameters too and if there is stil no EOL.
 * `bool is_invalid_input()` - Return `true` if last attempt to parse data resulted in invalid state.
@@ -177,3 +176,5 @@ Other public members:
 **Enabled by default.**
 * `void discard()` - reset the state and prepare for the next command.  
 If current command is still incomplete it will skip all input up to the next EOL character: `CR or LF`
+* `void limit_time(int)` - sets maximum time for internal processes in milliseconds. Use to prevent timely blocks on long inputs.  
+default is -1, which is "infinity".

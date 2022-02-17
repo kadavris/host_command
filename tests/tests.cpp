@@ -1,18 +1,41 @@
 /**
  * @file tests.cpp
  * @author Andrej Pakhutin (pakhutin <at> gmail.com)
- * @brief Contains testing for host_command class
- * @version 0.1
- * @date 2021-12-11
+ * @brief Contains testing for class host_command
+ * @version 0.1.1
+ * @date 2022-02-17
  * 
- * @copyright Copyright (c) 2021
+ * @copyright Copyright (c) 2022
  * 
+ * The repo is in github.com/kadavris
  */
 
 // Using Google Test
 #include "gtest/gtest.h"
 #include "test_Stream.hpp"
 #include "../include/host_command.hpp"
+
+#ifdef _MSC_VER
+// arduino millis() emulation. for testing purposes we don't need to account for more than a minute of run time
+unsigned long millis()
+{
+    SYSTEMTIME st;
+
+    GetSystemTime(&st);
+    return 60000ul * st.wMinute + 1000ul * st.wSecond + st.wMilliseconds;
+}
+
+#else
+#include <time.h>
+
+// arduino millis() emulation. for testing purposes we don't need to account for more than a minute of run time
+unsigned long millis()
+{
+    struct timespec tp;
+    clock_gettime(CLOCK_MONOTONIC, &tp);
+    return (unsigned long)(tp.tv_sec * 1000ul + tp.tv_nsec / 1000l);
+}
+#endif
 
 //===================================================================
 namespace {
@@ -44,10 +67,10 @@ namespace {
     //======================================================
     TEST_F(host_commandTest, test_Duplicate_Command_Name)
     {
-        host_command hc(1);
+        host_command hc(2); // you cannot have it less
 
         EXPECT_EQ( hc.new_command("C1", "d"),  1 );
-        EXPECT_EQ( hc.new_command("C2", "10sf"), 2 );
+        EXPECT_EQ( hc.new_command("C2", "sf"), 2 );
 
         EXPECT_EQ( hc.new_command("C1", "q"),  -1 );
         EXPECT_FALSE( hc.new_command("C2") );
@@ -668,6 +691,63 @@ namespace {
         EXPECT_EQ(hc.get_parameter_index(), 1);
         EXPECT_STREQ(hc.get_str(), "\"24\"");
 
+    }
+
+    //======================================================
+    TEST_F(host_commandTest, test_String_Length_Limit)
+    {
+        host_command hc(32, &Serial);
+
+        EXPECT_EQ(hc.new_command("q1", "3q"), 1);
+
+        EXPECT_EQ(hc.new_command("q1bad", "32q"), -1);
+
+        EXPECT_EQ(hc.new_command("q2", "10q3s"), 2);
+
+        EXPECT_EQ(hc.new_command("q2bad", "d-1q"), -1);
+
+        EXPECT_EQ(hc.new_command("q3", "1s4q2s"), 3);
+
+        EXPECT_EQ(hc.new_command("q3bad", "b0q"), -1);
+
+        Serial.add_input("q1 '4242'\n");
+
+        EXPECT_TRUE(hc.get_next_command());
+        EXPECT_EQ(hc.get_command_id(), 0);
+
+        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_EQ(hc.get_parameter_index(), 0);
+        EXPECT_STREQ(hc.get_str(), "424");
+
+        Serial.add_input("q2 'a1b2c3d4e5f6g7' 1a2b3c4d5e6f7g\n");
+
+        EXPECT_TRUE(hc.get_next_command());
+        EXPECT_EQ(hc.get_command_id(), 1);
+
+        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_EQ(hc.get_parameter_index(), 0);
+        EXPECT_STREQ(hc.get_str(), "a1b2c3d4e5");
+
+        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_EQ(hc.get_parameter_index(), 1);
+        EXPECT_STREQ(hc.get_str(), "1a2");
+
+        Serial.add_input("q3 ABC 'DEFGHIJ' KLMN\n");
+
+        EXPECT_TRUE(hc.get_next_command());
+        EXPECT_EQ(hc.get_command_id(), 2);
+
+        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_EQ(hc.get_parameter_index(), 0);
+        EXPECT_STREQ(hc.get_str(), "A");
+
+        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_EQ(hc.get_parameter_index(), 1);
+        EXPECT_STREQ(hc.get_str(), "DEFG");
+
+        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_EQ(hc.get_parameter_index(), 2);
+        EXPECT_STREQ(hc.get_str(), "KL");
     }
 };
 

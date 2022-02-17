@@ -2,12 +2,14 @@
 /**
  * @file test_Stream.hpp
  * @author Andrej Pakhutin (pakhutin <at> gmail.com)
- * @brief Header for class test_Stream
- * @version 0.1
+ * @brief Header for a mock class test_Stream
+ * @version 0.1.1
  * @date 2021-12-11
  * 
  * @copyright Copyright (c) 2021
  * 
+ * This file is a part of the class host_command testing suite
+ * The repo is in github.com/kadavris
  */
 
 #include <string>
@@ -49,10 +51,14 @@ extern test_Stream Serial;
 using Stream = test_Stream;
 using String = std::string;
 
+extern unsigned long millis();
+
 #ifdef _MSC_VER
 #include <windows.h>
 #define delay(a) Sleep((a))
+
 #else
 #include <stdlib.h>
 #define delay(a) sleep((a)/1000 + 1)
+
 #endif

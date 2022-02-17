@@ -1,9 +1,18 @@
 #pragma once
-/*
-  This module is Copyright by Andrej Pakhutin pakhutin <at> gmail.com
-
-  The purpose is to receive and parse host commands,
-  usually coming via Arduino framework's "Serial" class interface.
+/** @file host_command.hpp
+ * @brief Header file for class host_command
+ * @author Andrej Pakhutin (pakhutin <at> gmail.com)
+ * @version 0.1.1
+ * @date 2022-02-17
+ *
+ * @copyright Copyright (c) 2022
+ *
+ * This module is intended to be used with Arduino framework
+ *
+ * The purpose is to receive and parse host commands,
+ * usually coming via Arduino framework's "Serial" class interface.
+ *
+ * The repo is in: github.com/kadavris
 */
 
 #if defined(HOST_CMD_TEST)
@@ -42,12 +51,13 @@ public:
     const char* const errstr(); //< return error description
 
     // setup methods
-    void set_interactive(bool, const char*); //< if true then we'll produce some answer/error messages to host:
     void allow_escape(bool); //< Enables or disables use of escape character '\'
+    void limit_time(int); //< sets maximum time for internal processes in milliseconds. Use to prevent timely blocks on long inputs.
+    void set_interactive(bool, const char*); //< if true then we'll produce some answer/error messages to host:
 
     int new_command(String, String); //< command name, printf-style params: return -1 on error
 
-    bool new_command(String); //< Start to define the new command. Use this for relaxed, step by step definitions
+    bool new_command(String); //< start to define the new command. Use this for relaxed, step by step definitions
     void add_bool_param(); //< Adds another, boolean parameter for the current command
     void add_byte_param(); //< Adds another, byte parameter for the current command
     void add_int_param(); //< Adds another, integer number parameter for the current command
@@ -80,15 +90,16 @@ public:
     bool     fill_buffer(char*, int); //< buf ptr, buf length. bulk read data from source into user-supplied buffer.
 
 private:
-    std::vector<host_command_element*> commands; //< array of definitions
-    int cur_cmd;    //< index into commands or -1 - incomplete or -2 - not in list
-    int cur_param;  //< index of the current param available. -1 if none
-    uint32_t flags;      //< behavior changing settings. see host_cmd_flag_*
     uint8_t* buf;        //< internal: temporary buffer
     int buf_len;         //< internal: length of the buffer needed
     int buf_pos;         //< internal: pos into buffer where a new char will be stored
-    uint32_t state;      //< internal: state flags (bitfield actually)
+    std::vector<host_command_element*> commands; //< array of definitions
+    int cur_cmd;    //< index into commands or -1 - incomplete or -2 - not in list
+    int cur_param;  //< index of the current param available. -1 if none
     int err_code;        //< last error code
+    uint32_t flags;      //< behavior changing settings. see host_cmd_flag_*
+    int max_time;        //< max time for internal processes in milliseconds.
+    uint32_t state;      //< internal: state flags (bitfield actually)
 
     void _init(size_t, Stream*); //< constructor helper
     void init_for_new_input(uint32_t); //< set new state. also reset data before new command processing.

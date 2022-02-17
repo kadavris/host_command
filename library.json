@@ -1,6 +1,6 @@
 {
   "name": "HostCommand",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Multi-parameter and non-blocking command line parser, getting input from PC host or main controller hardware using Stream class interface.",
   "keywords": "command line, command processor, command parser, Serial, Stream",
   "repository":
