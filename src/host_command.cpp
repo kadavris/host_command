@@ -2,7 +2,7 @@
  * @brief Used to receive and parse host commands, usually via "Serial" class interface.
  * @author Andrej Pakhutin (pakhutin <at> gmail.com)
  * @brief Contains class host_command implementation
- * @version 0.1.1
+ * @version 0.1.2
  * @date 2022-02-17
  *
  * @copyright Copyright (c) 2022
@@ -72,7 +72,7 @@ static bool same_strings(const char* s1, const char* s2)
     if (s1 == s2)
         return true;
 
-    if (s1 == NULL || s2 == NULL)
+    if ( s1 == nullptr || s2 == nullptr )
         return false;
 
     while( *s1 && *s2 )
@@ -111,7 +111,7 @@ void host_command::_init(size_t _bs, Stream* s)
     if( _bs < 2 ) // We dont want to throw exceptions in embedded, so pretend it was a happy accident
         buf_len = 64;
     else
-        buf_len = (int)_bs;
+        buf_len = static_cast<int>(_bs);
 
     buf = new uint8_t[buf_len];
     flags = host_cmd_flag_escapes;
@@ -185,7 +185,7 @@ void host_command::set_interactive( bool _mode, const char* _prompt = nullptr )
  */
 void host_command::allow_escape( bool _mode )
 {
-    if (_mode)
+    if ( _mode )
         flags |= host_cmd_flag_escapes;
     else
         flags &= ~host_cmd_flag_escapes;
@@ -219,7 +219,7 @@ void host_command::limit_time( int _millis )
  */
 int host_command::new_command(String _name, String _params)
 {
-    if (! new_command(_name) )
+    if ( ! new_command(_name) )
         return -1;
 
     host_command_element* cmd = commands.back();
@@ -238,7 +238,7 @@ int host_command::new_command(String _name, String _params)
                     return -1;
                 }
 
-                cmd->optional_start = (int)(cmd->params.size()) - 1;
+                cmd->optional_start = static_cast<int>(cmd->params.size()) - 1;
                 break;
             case 'b':
                 param_info |= hcmd_t_bool;
@@ -290,7 +290,7 @@ int host_command::new_command(String _name, String _params)
         {
             if (param_info & (hcmd_t_qstr | hcmd_t_str)) // check length attribute validity
             {
-                if (param_len < 1 || param_len > buf_len - 1) //overflow?
+                if (param_len < 1 || static_cast<int>(param_len) > buf_len - 1) //overflow?
                 {
                     err_code = host_command_error_bad_length;
                     commands.pop_back(); // try to do basic clean up. Probably not worth it anyway
@@ -303,7 +303,7 @@ int host_command::new_command(String _name, String _params)
         }
     } // end of scan through _params
 
-    return (int)(cmd->params.size());
+    return static_cast<int>(cmd->params.size());
 }
 
 /** @brief Start to define the new command. Use this for relaxed, step by step definitions
@@ -378,7 +378,7 @@ void host_command::optional_from_here(void)
     auto cmd = commands.back();
 
     if (cmd->optional_start == INT_MAX)
-        cmd->optional_start = (int)(cmd->params.size());
+        cmd->optional_start = static_cast<int>(cmd->params.size());
 }
 
 /**
@@ -441,11 +441,12 @@ bool host_command::is_command_complete()
 {
     if( cur_cmd == -1 || ( state & (hcmd_state_EOL | hcmd_state_invalid) )
         || is_optional() 
-        || (int)commands[cur_cmd]->params.size() == 0 )
+        || commands[cur_cmd]->params.size() == 0 )
         return true;
 
     // if it is the last parameter and is already complete?
-    return state & hcmd_state_complete && cur_param + 1 == (int)commands[cur_cmd]->params.size();
+    return ( state & hcmd_state_complete ) &&
+           ( cur_param + 1 == static_cast<int>(commands[cur_cmd]->params.size()));
 }
 
 /**
@@ -508,11 +509,12 @@ bool host_command::is_optional()
 bool host_command::no_more_parameters()
 {
     if( cur_cmd == -1 || state & ( hcmd_state_EOL | hcmd_state_invalid )
-        || (int)commands[cur_cmd]->params.size() == 0 )
+        || commands[cur_cmd]->params.size() == 0 )
         return true;
 
     // if it is the last parameter and is already complete?
-    return state & hcmd_state_complete && cur_param + 1 == (int)commands[cur_cmd]->params.size();
+    return ( state & hcmd_state_complete ) && 
+           ( cur_param + 1 == static_cast<int>(commands[cur_cmd]->params.size()));
 } 
 
 /**
@@ -542,7 +544,7 @@ int host_command::check_input( )
     if ( cur_cmd > -1 && (state & hcmd_state_complete) ) // have previous parameter complete
     {
         // if got all params already and we're in the complete state, then init for next command
-        if ( cur_param + 1 == (int)commands[ cur_cmd ]->params.size() ) // no params or last one
+        if ( cur_param + 1 == static_cast<int>(commands[ cur_cmd ]->params.size()) ) // no params or last one
         {
             init_for_new_input( hcmd_state_clean );
         }
@@ -664,7 +666,9 @@ int host_command::check_input( )
                 state |= hcmd_state_EOL;
 
                 // checking if this or next param is not optional
-                if ( buf_pos == 0 || (cur_param + 1 < (int)cmd->params.size() && cur_param + 1 < cmd->optional_start))
+                if ( buf_pos == 0 ||
+                     ( cur_param + 1 < static_cast<int>(cmd->params.size()) &&
+                       cur_param + 1 < cmd->optional_start ) )
                 {
                     if ( flags & host_cmd_flag_interactive )
                     {
@@ -866,7 +870,7 @@ float host_command::get_float()
     if (cur_cmd == -1 || state & hcmd_state_invalid || cur_param == -1 )
         return 0.0f;
 
-    return (float)atof( (char*)buf );
+    return static_cast<float>(atof( (char*)buf ));
 }
 
 /**
@@ -912,7 +916,7 @@ bool host_command::fill_buffer(char* dst, int len)
 
         need = ready < len - pos ? ready : len - pos;
 
-        ready = (int)(source->readBytes(dst + pos, need));
+        ready = static_cast<int>(source->readBytes(dst + pos, need));
 
         if (ready == need)
             return true;
