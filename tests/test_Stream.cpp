@@ -2,7 +2,7 @@
  * @file test_Stream.cpp
  * @author Andrej Pakhutin (pakhutin <at> gmail.com)
  * @brief Mockup of Arduino's framework class Stream
- * @version 0.1
+ * @version 0.1.1
  * @date 2021-12-11
  *
  * @copyright Copyright (c) 2021
@@ -10,7 +10,7 @@
  */
 #include <iostream>
 #include "test_Stream.hpp"
-#include "../host_command.hpp"
+#include "../include/host_command.hpp"
 
 test_Stream Serial;
 
