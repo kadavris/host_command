@@ -2,10 +2,10 @@
 /** @file host_command.hpp
  * @brief Header file for class host_command
  * @author Andrej Pakhutin (pakhutin <at> gmail.com)
- * @version 0.1.1
- * @date 2022-02-17
+ * @version 0.1.2
+ * @date 2023-04-08
  *
- * @copyright Copyright (c) 2022
+ * @copyright Copyright (c) 2023
  *
  * This module is intended to be used with Arduino framework
  *
@@ -98,7 +98,7 @@ private:
     int cur_param;  //< index of the current param available. -1 if none
     int err_code;        //< last error code
     uint32_t flags;      //< behavior changing settings. see host_cmd_flag_*
-    int max_time;        //< max time for internal processes in milliseconds.
+    int max_time;        //< max time for internal processes in milliseconds. no timeout if < 0
     uint32_t state;      //< internal: state flags (bitfield actually)
 
     void _init(size_t, Stream*); //< constructor helper

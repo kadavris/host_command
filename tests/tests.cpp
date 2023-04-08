@@ -2,10 +2,10 @@
  * @file tests.cpp
  * @author Andrej Pakhutin (pakhutin <at> gmail.com)
  * @brief Contains testing for class host_command
- * @version 0.1.1
- * @date 2022-02-17
- * 
- * @copyright Copyright (c) 2022
+ * @version 0.1.2
+ * @date 2023-04-08
+ *
+ * @copyright Copyright (c) 2023
  * 
  * The repo is in github.com/kadavris
  */
@@ -690,7 +690,22 @@ namespace {
         EXPECT_TRUE(hc.has_next_parameter());
         EXPECT_EQ(hc.get_parameter_index(), 1);
         EXPECT_STREQ(hc.get_str(), "\"24\"");
+    }
 
+    //======================================================
+    TEST_F(host_commandTest, test_Quoted_String_Missing_Quote)
+    {
+        host_command hc(32, &Serial);
+        EXPECT_EQ(hc.new_command("param", "q"), 1);
+
+        Serial.add_input("param unquoted\n");
+        EXPECT_TRUE(hc.get_next_command());
+        EXPECT_EQ(hc.get_command_id(), 0);
+
+        EXPECT_FALSE(hc.has_next_parameter());
+        EXPECT_STREQ(hc.get_str(), "");
+
+        EXPECT_TRUE(hc.is_invalid_input());
     }
 
     //======================================================

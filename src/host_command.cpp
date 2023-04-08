@@ -3,9 +3,9 @@
  * @author Andrej Pakhutin (pakhutin <at> gmail.com)
  * @brief Contains class host_command implementation
  * @version 0.1.2
- * @date 2022-02-17
+ * @date 2023-04-08
  *
- * @copyright Copyright (c) 2022
+ * @copyright Copyright (c) 2023
  *
  * This module is intended to be used with Arduino framework
  * The repo is in: github.com/kadavris
@@ -50,7 +50,8 @@ static const char* host_command_errors[] =
     "attempt to define duplicate command name",
     "required parameter missing",
     "invalid parameters specification for new_command(Source, SPEC)",
-    "parameter length exceeded or user requested too small buffer"
+    "parameter length exceeded or user requested too small buffer",
+    "expected quoted string but got no quote",
 };
 
 const int host_command_error_bad_length = 1; //< bad parameter's length on defining stage
@@ -59,6 +60,7 @@ const int host_command_error_duplicate_command = 3; //< attempt to define duplic
 const int host_command_error_required_missing = 4; //< missing argument was not marked as optional
 const int host_command_error_invalid_param_spec = 5; //< invalid parameters specification for new_command(x,x)
 const int host_command_error_param_too_long = 6; //< parameter length exceeded or user requested too small buffer
+const int host_command_error_missing_quotes = 7; //< expected quoted string but got no quote
 
 /**
 * @brief Simple, "equal or not" case-insensitive strings comparison
@@ -725,30 +727,43 @@ int host_command::check_input( )
             continue;
         }
 
-        // check for the beginning/ending quote
-        if ( cmd->params[ cur_param ] & hcmd_t_qstr && ( c == '"' || c == '\'' ) )
+        // Quoted strings
+        if ( cmd->params[ cur_param ] & hcmd_t_qstr )
         {
-            if ( ! ( state & hcmd_state_got_quotes ) ) // 1st quote only
+            if (c == '"' || c == '\'') // check for the beginning/ending quote
             {
-                // remember what type of quote used at the beginning
-                if ( c == '"' )
-                    state |= hcmd_state_d_quote;
-                else
-                    state |= hcmd_state_s_quote;
+                if ( ! (state & hcmd_state_got_quotes) ) // is it starting quote?
+                {
+                    // remember what type of quote used at the beginning
+                    if (c == '"')
+                        state |= hcmd_state_d_quote;
+                    else
+                        state |= hcmd_state_s_quote;
 
-                continue; // don't store quotes
-            }
+                    continue; // don't store quotes
+                }
 
-            if ( ( c == '"'  && (state & hcmd_state_d_quote) )
-              || ( c == '\'' && (state & hcmd_state_s_quote) ) )
+                else if ((c == '"' && (state & hcmd_state_d_quote)) // closing quote?
+                    || (c == '\'' && (state & hcmd_state_s_quote)))
+                {
+                    state |= hcmd_state_complete;
+
+                    buf[buf_pos] = '\0';
+
+                    return 1;
+                }
+            } // got quote
+
+            // if 1st char is not a quote then set error state
+            else if ( buf_pos == 0 && ! (state & hcmd_state_got_quotes))
             {
-                state |= hcmd_state_complete;
+                err_code = host_command_error_missing_quotes;
 
-                buf[ buf_pos ] = '\0';
-
-                return 1;
+                state |= hcmd_state_invalid;
+                
+                return -1;
             }
-        }
+        } // if quoted string?
 
         //TODO: check if no quotes was used
         //TODO: check for maximum string length
