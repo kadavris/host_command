@@ -2,7 +2,7 @@
  * @file tests.cpp
  * @author Andrej Pakhutin (pakhutin <at> gmail.com)
  * @brief Contains testing for class host_command
- * @version 0.1.2
+ * @version 1.0.31
  * @date 2023-04-08
  *
  * @copyright Copyright (c) 2023

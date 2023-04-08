@@ -3,10 +3,10 @@
  * @file test_Stream.hpp
  * @author Andrej Pakhutin (pakhutin <at> gmail.com)
  * @brief Header for a mock class test_Stream
- * @version 0.1.1
- * @date 2021-12-11
- * 
- * @copyright Copyright (c) 2021
+ * @version 1.0.31
+ * @date 2023-04-08
+ *
+ * @copyright Copyright (c) 2023
  * 
  * This file is a part of the class host_command testing suite
  * The repo is in github.com/kadavris

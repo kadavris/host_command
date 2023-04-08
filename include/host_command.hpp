@@ -2,7 +2,7 @@
 /** @file host_command.hpp
  * @brief Header file for class host_command
  * @author Andrej Pakhutin (pakhutin <at> gmail.com)
- * @version 0.1.2
+ * @version 1.0.31
  * @date 2023-04-08
  *
  * @copyright Copyright (c) 2023

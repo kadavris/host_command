@@ -2,10 +2,10 @@
  * @file test_Stream.cpp
  * @author Andrej Pakhutin (pakhutin <at> gmail.com)
  * @brief Mockup of Arduino's framework class Stream
- * @version 0.1.1
- * @date 2021-12-11
+ * @version 1.0.31
+ * @date 2023-04-08
  *
- * @copyright Copyright (c) 2021
+ * @copyright Copyright (c) 2023
  *
  */
 #include <iostream>
