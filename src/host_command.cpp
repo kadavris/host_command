@@ -100,7 +100,7 @@ const char* const host_command::errstr()
 }
 
 /**
- * @brief Internal: initialazes class data 
+ * @brief Internal: initializes class data 
  * 
  * @param _bs size_t: Buffer size
  * @param s Stream*: Source of commands
