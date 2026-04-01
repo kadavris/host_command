@@ -2,15 +2,14 @@
 /** @file host_command.hpp
  * @brief Header file for class host_command
  * @author Andrej Pakhutin (pakhutin <at> gmail.com)
- * @version 1.0.31
- * @date 2023-04-08
+ * @version 1.0.4
  *
- * @copyright Copyright (c) 2023
+ * @copyright Copyright (c) 2023+
  *
  * This module is intended to be used with Arduino framework
  *
  * The purpose is to receive and parse host commands,
- * usually coming via Arduino framework's "Serial" class interface.
+ * usually coming via "Serial" class interface.
  *
  * The repo is in: github.com/kadavris
 */
@@ -41,23 +40,23 @@ typedef struct //< internal: command's definition
 class host_command
 {
 public:
-    host_command(size_t);
-    host_command(size_t,Stream*);
+    host_command(size_t);  // Buffer size. 'Serial' is default interface
+    host_command(size_t, Stream *);  // Buffer size, Source of commands
     ~host_command();
 
-    String prompt;       //< if not NULL it will be printed as a new command prompt.
-    Stream* source;       //< source of commands
+    String prompt;   //< Being non-empty it will be printed as prompt to enter a new command.
+    Stream* source;  //< source of commands
 
     const char* const errstr(); //< return error description
 
     // setup methods
     void allow_escape(bool); //< Enables or disables use of escape character '\'
     void limit_time(int); //< sets maximum time for internal processes in milliseconds. Use to prevent timely blocks on long inputs.
-    void set_interactive(bool, const char*); //< if true then we'll produce some answer/error messages to host:
+    void set_interactive(bool, const char *); //< if true then we'll produce some answer/error messages to host:
 
-    int new_command(String, String); //< command name, printf-style params: return -1 on error
+    int new_command(const String&, const String&); //< command name, printf-style params: return -1 on error
 
-    bool new_command(String); //< start to define the new command. Use this for relaxed, step by step definitions
+    bool new_command(const String&); //< start to define the new command. Use this for relaxed, step by step definitions
     void add_bool_param(); //< Adds another, boolean parameter for the current command
     void add_byte_param(); //< Adds another, byte parameter for the current command
     void add_int_param(); //< Adds another, integer number parameter for the current command
@@ -87,7 +86,7 @@ public:
 
     void     discard(); //< discard current command's processing completely
 
-    bool     fill_buffer(char*, int); //< buf ptr, buf length. bulk read data from source into user-supplied buffer.
+    bool     fill_buffer(char *, int); //< buf ptr, buf length. bulk read data from source into user-supplied buffer.
 
 private:
     uint8_t* buf;        //< internal: temporary buffer
@@ -96,14 +95,14 @@ private:
     std::vector<host_command_element*> commands; //< array of definitions
     int cur_cmd;    //< index into commands or -1 - incomplete or -2 - not in list
     int cur_param;  //< index of the current param available. -1 if none
-    int err_code;        //< last error code
+    int err_code;        //< last error code (host_command_error_codes)
     uint32_t flags;      //< behavior changing settings. see host_cmd_flag_*
-    int max_time;        //< max time for internal processes in milliseconds. no timeout if < 0
+    int max_time;        //< max time for internal processes in milliseconds. no timeout if <= 0
     uint32_t state;      //< internal: state flags (bitfield actually)
 
-    void _init(size_t, Stream*); //< constructor helper
+    void _init(size_t, Stream *); //< constructor helper
     void init_for_new_input(uint32_t); //< set new state. also reset data before new command processing.
     int check_input(); //< very internal. check source for data and do all incoming data processing.
-    int find_command_index(const char*); //< return command's id/index by name. -1 if not found
+    int find_command_index(const char *); //< return command's id/index by name. -1 if not found
 };
 

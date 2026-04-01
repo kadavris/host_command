@@ -31,7 +31,7 @@ public:
 
     // testing interface
     void add_input( std::string );
-    void add_input( char* );
+    void add_input( const char* );
     void clear();
     int fail_percentage;
 
@@ -53,10 +53,9 @@ using String = std::string;
 
 extern unsigned long millis();
 
-#ifdef _MSC_VER
+#if defined(_MSC_VER) || defined(__CYGWIN__)
 #include <windows.h>
 #define delay(a) Sleep((a))
-
 #else
 #include <stdlib.h>
 #define delay(a) sleep((a)/1000 + 1)

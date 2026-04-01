@@ -17,12 +17,12 @@ test_Stream Serial;
 // test_Stream members:
 const char* test_Stream_tag = ". test_Stream: ";
 
-void test_Stream::add_input(std::string _s)
+void test_Stream::add_input( std::string _s )
 {
     buf += _s;
 }
 
-void test_Stream::add_input(char* _s)
+void test_Stream::add_input( const char* _s )
 {
     buf += _s;
 }

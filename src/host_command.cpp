@@ -1,11 +1,10 @@
 /** @file host_command.cpp
- * @brief Used to receive and parse host commands, usually via "Serial" class interface.
+ * @brief Use to receive and parse commands, usually via "Serial" class interface.
  * @author Andrej Pakhutin (pakhutin <at> gmail.com)
  * @brief Contains class host_command implementation
- * @version 1.0.31
- * @date 2023-04-08
+ * @version 1.0.4
  *
- * @copyright Copyright (c) 2023
+ * @copyright Copyright (c) 2023+
  *
  * This module is intended to be used with Arduino framework
  * The repo is in: github.com/kadavris
@@ -22,45 +21,54 @@ const uint32_t hcmd_t_float = 0x00080000;
 const uint32_t hcmd_t_str   = 0x00100000; //< \S+
 const uint32_t hcmd_t_qstr  = 0x00200000; //< quoted string
 
+const char command_code_optional = '?';
+const char command_code_bool  = 'b';
+const char command_code_byte  = 'c';
+const char command_code_int   = 'd';
+const char command_code_float = 'f';
+const char command_code_qstr  = 'q';
+const char command_code_str   = 's';
+
 // param flags: 4th byte
 //const uint32_t host_cmd_??? = 0x01000000;
 
-const uint32_t host_cmd_flag_interactive = 0x00000001; //< report problems back to host
-const uint32_t host_cmd_flag_escapes     = 0x00000002; //< allow escape char '\' to be used
+const uint32_t hc_flag_interactive = 0x00000001; //< report problems back to host
+const uint32_t hc_flag_escapes     = 0x00000002; //< allow escape char '\' to be used
 
 // bitflags used for internal state tracking
-const uint32_t hcmd_state_clean          = 0; //< nothing yet happened
-const uint32_t hcmd_state_complete       = 0x00000001; //< got a full command name or parameter data
-const uint32_t hcmd_state_cmd            = 0x00000002; //< dealing with command name
-const uint32_t hcmd_state_param          = 0x00000004; //< dealing with parameter data
-const uint32_t hcmd_state_EOL            = 0x00000008; //< got an EOL
-const uint32_t hcmd_state_d_quote        = 0x00000010; //< got " - quoted string. used for sanity checking
-const uint32_t hcmd_state_s_quote        = 0x00000020; //< got ' - quoted string. used for sanity checking
-const uint32_t hcmd_state_escape         = 0x00000040; //< got escape symbol 
-const uint32_t hcmd_state_skip           = 0x00000080; //< skip input till the next param (used if there are max length specified)
-const uint32_t hcmd_state_invalid        = 0x10000000; //< got invalid data. waiting for EOL
-const uint32_t hcmd_state_got_some   = hcmd_state_cmd | hcmd_state_param; //< use for checking if we stared processing some data already
-const uint32_t hcmd_state_got_quotes = hcmd_state_d_quote | hcmd_state_s_quote; //< got 1st quote of quoted string. used for sanity checking
+const uint32_t hc_state_clean          = 0; //< nothing yet happened
+const uint32_t hc_state_complete       = 0x00000001; //< got a full command name or parameter data
+const uint32_t hc_state_cmd            = 0x00000002; //< dealing with command name
+const uint32_t hc_state_param          = 0x00000004; //< dealing with parameter data
+const uint32_t hc_state_EOL            = 0x00000008; //< got an EOL
+const uint32_t hc_state_d_quote        = 0x00000010; //< got " - quoted string. used for sanity checking
+const uint32_t hc_state_s_quote        = 0x00000020; //< got ' - quoted string. used for sanity checking
+const uint32_t hc_state_escape         = 0x00000040; //< got escape symbol 
+const uint32_t hc_state_skip           = 0x00000080; //< skip input till the next param (used if there are max length specified)
+const uint32_t hc_state_invalid        = 0x10000000; //< got invalid data. waiting for EOL
+const uint32_t hc_state_got_some   = hc_state_cmd | hc_state_param; //< if we started to process cmd parts already
+const uint32_t hc_state_got_quotes = hc_state_d_quote | hc_state_s_quote; //< got a 1st quote of quoted string. used for sanity checking
 
-static const char* host_command_errors[] =
+static const char* hc_errors[] =
 {
-    "no error",
-    "bad parameter's length in definiton",
-    "bad char on parameter's definition",
-    "attempt to define duplicate command name",
-    "required parameter missing",
-    "invalid parameters specification for new_command(Source, SPEC)",
-    "parameter length exceeded or user requested too small buffer",
-    "expected quoted string but got no quote",
+    /* 0*/"no error",
+    /* 1*/"bad parameter's length in definiton",
+    /* 2*/"bad char on parameter's definition",
+    /* 3*/"attempt to define duplicate command name",
+    /* 4*/"required parameter missing",
+    /* 5*/"invalid parameters specification for new_command(Source, SPEC)",
+    /* 6*/"parameter length exceeded or user requested too small buffer",
+    /* 7*/"expected quoted string but got no quote",
 };
 
-const int host_command_error_bad_length = 1; //< bad parameter's length on defining stage
-const int host_command_error_bad_pcode = 2; //< bad char on parameters defining stage
-const int host_command_error_duplicate_command = 3; //< attempt to define duplicate command name
-const int host_command_error_required_missing = 4; //< missing argument was not marked as optional
-const int host_command_error_invalid_param_spec = 5; //< invalid parameters specification for new_command(x,x)
-const int host_command_error_param_too_long = 6; //< parameter length exceeded or user requested too small buffer
-const int host_command_error_missing_quotes = 7; //< expected quoted string but got no quote
+const int hc_error_no_error = 0;
+const int hc_error_bad_length = 1; //< bad parameter's length on defining stage
+const int hc_error_bad_pcode = 2; //< bad char on parameters defining stage
+const int hc_error_duplicate_command = 3; //< attempt to define duplicate command name
+const int hc_error_required_missing = 4; //< missing argument was not marked as optional
+const int hc_error_invalid_param_spec = 5; //< invalid parameters specification for new_command(x,x)
+const int hc_error_param_too_long = 6; //< parameter length exceeded or user requested too small buffer
+const int hc_error_missing_quotes = 7; //< expected quoted string but got no quote
 
 /**
 * @brief Simple, "equal or not" case-insensitive strings comparison
@@ -96,7 +104,7 @@ static bool same_strings(const char* s1, const char* s2)
  */
 const char* const host_command::errstr()
 {
-    return host_command_errors[err_code];
+    return hc_errors[err_code];
 }
 
 /**
@@ -113,13 +121,13 @@ void host_command::_init(size_t _bs, Stream* s)
     if( _bs < 2 ) // We dont want to throw exceptions in embedded, so pretend it was a happy accident
         buf_len = 64;
     else
-        buf_len = static_cast<int>(_bs);
+        buf_len = static_cast<int>( _bs );
 
     buf = new uint8_t[buf_len];
-    flags = host_cmd_flag_escapes;
+    flags = hc_flag_escapes;
     max_time = -1; // no limit
 
-    init_for_new_input(hcmd_state_clean);
+    init_for_new_input( hc_state_clean );
 }
 
 /**
@@ -173,11 +181,13 @@ void host_command::init_for_new_input( uint32_t _state )
 void host_command::set_interactive( bool _mode, const char* _prompt = nullptr )
 {
     if ( _mode )
-        flags |= host_cmd_flag_interactive;
+        flags |= hc_flag_interactive;
     else
-        flags &= ~host_cmd_flag_interactive;
+        flags &= ~hc_flag_interactive;
 
-    prompt = _prompt;
+    prompt.clear();
+    if ( _prompt != nullptr )
+        prompt += _prompt;
 }
 
 /**
@@ -188,15 +198,15 @@ void host_command::set_interactive( bool _mode, const char* _prompt = nullptr )
 void host_command::allow_escape( bool _mode )
 {
     if ( _mode )
-        flags |= host_cmd_flag_escapes;
+        flags |= hc_flag_escapes;
     else
-        flags &= ~host_cmd_flag_escapes;
+        flags &= ~hc_flag_escapes;
 }
 
 /**
  * @brief sets maximum time for internal processes
  * 
- * @param bool: int _millis: milliseconds. set < 0 for no timeout
+ * @param int _millis: milliseconds. set < 0 for no timeout
  *
  * Use to prevent timely blocks on long inputs.
  */
@@ -209,19 +219,19 @@ void host_command::limit_time( int _millis )
 /** @brief Define the new command in full. Use for quick, C-style definitions
  *
  * @param String: command name
- * @param String: printf-like parameters definition
+ * @param String: parameters definition
  * @return int: -1 if _params are incorrect or number of parameters recorded
  *
- * The second parameter uses printf-like codes to define parameters for a command.
- * Format is slightly simpler though:
- * [?][length][type]
- *   ? - this marks beginning of optional parameters
+ * The second parameter uses printf-like codes to define command parameters if any.
+ * The format is: [?][length]type, where:
+ *   ? - this marks the beginning of optional parameters
  *   length - integer. set _maximum_ input length.
- *   type - as in printf: b-bool, c-byte, d-int, f-float, s-string, q-quoted string
+ *   type - printf-like: b-bool, c-byte, d-int, f-float, s-string, q-quoted string
+ *          see known_command_codes enum
  */
-int host_command::new_command(String _name, String _params)
+int host_command::new_command( const String& _name, const String& _params )
 {
-    if ( ! new_command(_name) )
+    if ( ! new_command( _name ) )
         return -1;
 
     host_command_element* cmd = commands.back();
@@ -229,73 +239,76 @@ int host_command::new_command(String _name, String _params)
     uint32_t param_info = 0;
     uint32_t param_len = 0;
 
-    for (unsigned i = 0; i < _params.length(); ++i)
+    for ( unsigned i = 0; i < _params.length(); ++i )
     {
-        switch (_params[i])
+        switch ( _params[i] )
         {
-            case '?':
-                if (cmd->params.size() == 0 || cmd->optional_start != INT_MAX )
+            case command_code_optional:
+                if ( cmd->params.size() == 0 || cmd->optional_start != INT_MAX )
                 {
-                    err_code = host_command_error_invalid_param_spec;
+                    err_code = hc_error_invalid_param_spec;
                     return -1;
                 }
 
                 cmd->optional_start = static_cast<int>(cmd->params.size()) - 1;
                 break;
-            case 'b':
+            case command_code_bool:
                 param_info |= hcmd_t_bool;
                 break;
-            case 'c':
+            case command_code_byte:
                 param_info |= hcmd_t_byte;
                 break;
-            case 'd':
+            case command_code_int:
                 param_info |= hcmd_t_int;
                 break;
-            case 'f':
+            case command_code_float:
                 param_info |= hcmd_t_float;
                 break;
-            case 'q':
+            case command_code_qstr:
                 param_info |= hcmd_t_qstr;
                 if (param_len == 0)
                     param_len = buf_len - 1;
                 break;
-            case 's':
+            case command_code_str:
                 param_info |= hcmd_t_str;
                 if (param_len == 0)
                     param_len = buf_len - 1;
                 break;
+
             default:
                 if ( isdigit( _params[i] ) ) // length
                 {
                     param_len = param_len * 10u + _params[i] - '0';
 
-                    if ( param_len == 0 ) // leading zero is most probably a mistake
+                    if ( param_len == 0 ) // leading zero most probably is a mistake
                     {
-                        err_code = host_command_error_bad_length;
+                        err_code = hc_error_bad_length;
                         commands.pop_back(); // try to do basic clean up. Probably not worth it anyway
                         return -1;
                     }
                 }
+
                 else if ( isspace(_params[i]) ) // allow spaces for readability
                 {
                     continue;
                 }
+
                 else
                 {
-                    err_code = host_command_error_bad_pcode;
-                        commands.pop_back(); // try to do basic clean up. Probably not worth it anyway
+                    err_code = hc_error_bad_pcode;
+                        commands.pop_back(); // try to do a basic clean up. Probably not worth it anyway
                     return -1;
                 }
         } // switch (_params[i])
 
-        if (param_info & 0x00ff0000) // has command type - saving
+        if ( param_info & 0x00ff0000 ) // command type is set - saving
         {
-            if (param_info & (hcmd_t_qstr | hcmd_t_str)) // check length attribute validity
+            if ( param_info & (hcmd_t_qstr | hcmd_t_str) ) // check length attribute validity
             {
-                if (param_len < 1 || static_cast<int>(param_len) > buf_len - 1) //overflow?
+                if ( param_len < 1 || static_cast<int>(param_len) > buf_len - 1 ) //overflow?
                 {
-                    err_code = host_command_error_bad_length;
-                    commands.pop_back(); // try to do basic clean up. Probably not worth it anyway
+                    err_code = hc_error_bad_length;
+                    commands.pop_back(); // try to do a basic clean up. Probably not worth it anyway
                     return -1;
                 }
             }
@@ -305,7 +318,7 @@ int host_command::new_command(String _name, String _params)
         }
     } // end of scan through _params
 
-    return static_cast<int>(cmd->params.size());
+    return static_cast<int>( cmd->params.size() );
 }
 
 /** @brief Start to define the new command. Use this for relaxed, step by step definitions
@@ -314,83 +327,83 @@ int host_command::new_command(String _name, String _params)
  * @return bool: if added OK
  *
  */
-bool host_command::new_command(String _name)
+bool host_command::new_command( const String& _name )
 {
-    if (find_command_index(_name.c_str()) != -1)
+    if ( find_command_index( _name.c_str() ) != -1 )
     {
-        err_code = host_command_error_duplicate_command;
+        err_code = hc_error_duplicate_command;
         return false;
     }
 
-    host_command_element* cmd = new(host_command_element);
+    host_command_element* cmd = new( host_command_element );
     cmd->name = _name;
     cmd->optional_start = INT_MAX;
-    commands.push_back(cmd);
+    commands.push_back( cmd );
 
     return true;
 }
 
-void host_command::add_bool_param()
+void host_command::add_bool_param(void)
 {
-    commands.back()->params.push_back(hcmd_t_bool);
+    commands.back()->params.push_back( hcmd_t_bool );
 }
 
-void host_command::add_byte_param()
+void host_command::add_byte_param(void)
 {
-    commands.back()->params.push_back(hcmd_t_byte);
+    commands.back()->params.push_back( hcmd_t_byte );
 }
 
-void host_command::add_int_param()
+void host_command::add_int_param(void)
 {
-    commands.back()->params.push_back(hcmd_t_int);
+    commands.back()->params.push_back( hcmd_t_int );
 }
 
-void host_command::add_float_param()
+void host_command::add_float_param(void)
 {
-    commands.back()->params.push_back(hcmd_t_float);
+    commands.back()->params.push_back( hcmd_t_float );
 }
 
-void host_command::add_str_param(uint16_t len = 65535)
+void host_command::add_str_param( uint16_t len = 65535 )
 {
-    if (len > buf_len - 1) //overflow?
+    if ( len > buf_len - 1 ) //overflow?
     {
-        err_code = host_command_error_bad_length;
+        err_code = hc_error_bad_length;
         len = buf_len - 1;
     }
 
-    commands.back()->params.push_back(hcmd_t_str | len);
+    commands.back()->params.push_back( hcmd_t_str | len );
 }
 
-void host_command::add_qstr_param(uint16_t len = 65535)
+void host_command::add_qstr_param( uint16_t len = 65535 )
 {
     if (len > buf_len - 1) //overflow?
     {
-        err_code = host_command_error_bad_length;
+        err_code = hc_error_bad_length;
         len = buf_len - 1;
     }
 
-    commands.back()->params.push_back(hcmd_t_qstr | len);
+    commands.back()->params.push_back( hcmd_t_qstr | len );
 }
 
 void host_command::optional_from_here(void)
 {
-    if (commands.size() == 0)
+    if ( commands.size() == 0 )
         return;
 
     auto cmd = commands.back();
 
-    if (cmd->optional_start == INT_MAX)
-        cmd->optional_start = static_cast<int>(cmd->params.size());
+    if ( cmd->optional_start == INT_MAX )
+        cmd->optional_start = static_cast<int>( cmd->params.size() );
 }
 
 /**
-* @brief Request to get next command from the input
+* @brief Request to get the next command from the input
 *
 * @return bool: false if none or error, or true if new command has arrived
 */
-bool host_command::get_next_command()
+bool host_command::get_next_command(void)
 {
-    if (is_command_complete())
+    if ( is_command_complete() )
         discard();
 
     return check_input() > 0;
@@ -401,7 +414,7 @@ bool host_command::get_next_command()
 *
 * @return int: -1 if none or index of new command available
 */
-int host_command::get_command_id()
+int host_command::get_command_id(void)
 {
     return cur_cmd;
 }
@@ -411,9 +424,9 @@ int host_command::get_command_id()
 *
 * @return String: empty if no current command 
 */
-String host_command::get_command_name()
+String host_command::get_command_name(void)
 {
-    if (cur_cmd == -1)
+    if ( cur_cmd == -1 )
         return String("");
 
     return commands[cur_cmd]->name;
@@ -424,9 +437,9 @@ String host_command::get_command_name()
 *
 * @return bool: true if something got broken
 */
-bool host_command::is_invalid_input()
+bool host_command::is_invalid_input(void)
 {
-    return state & hcmd_state_invalid;
+    return state & hc_state_invalid;
 }
 
 /**
@@ -434,21 +447,21 @@ bool host_command::is_invalid_input()
 *
 * @return bool: true if complete
 *
-* Note that return valuee here depends not only on error, no command, or command with EOL received,
-* but also
-* 1) if current parameter is optional
-* 2) or if current parameter is the last and received complete
+* Note that return valuee here depends not only on error, no command,
+* or command with EOL received, but also
+*     1) if current parameter is optional
+*     2) or if current parameter is the last by definition and received complete
 */
-bool host_command::is_command_complete()
+bool host_command::is_command_complete(void)
 {
-    if( cur_cmd == -1 || ( state & (hcmd_state_EOL | hcmd_state_invalid) )
+    if( cur_cmd == -1 || ( state & (hc_state_EOL | hc_state_invalid) )
         || is_optional() 
         || commands[cur_cmd]->params.size() == 0 )
         return true;
 
     // if it is the last parameter and is already complete?
-    return ( state & hcmd_state_complete ) &&
-           ( cur_param + 1 == static_cast<int>(commands[cur_cmd]->params.size()));
+    return ( state & hc_state_complete ) &&
+           ( cur_param + 1 == static_cast<int>( commands[cur_cmd]->params.size() ) );
 }
 
 /**
@@ -456,9 +469,9 @@ bool host_command::is_command_complete()
 *
 * @return int: false if none/error or true if new parameter's data is available
 */
-bool host_command::has_next_parameter()
+bool host_command::has_next_parameter(void)
 {
-    if (no_more_parameters())
+    if ( no_more_parameters() )
         return false;
         
     return check_input() > 0;
@@ -469,9 +482,9 @@ bool host_command::has_next_parameter()
 *
 * @return int: -1 if none or index of new parameter available
 */
-int host_command::get_parameter_index()
+int host_command::get_parameter_index(void)
 {
-    if (cur_cmd == -1)
+    if ( cur_cmd == -1 )
         return -1;
 
     return cur_param;
@@ -482,9 +495,9 @@ int host_command::get_parameter_index()
  *
  * @return uint32_t info bitmask or 0 if something wrong
  */
-uint32_t host_command::get_parameter_info()
+uint32_t host_command::get_parameter_info(void)
 {
-    if (cur_cmd == -1 || cur_param == -1)
+    if ( cur_cmd == -1 || cur_param == -1 )
         return 0;
 
     return commands[cur_cmd]->params[cur_param];
@@ -495,7 +508,7 @@ uint32_t host_command::get_parameter_info()
  *
  * @return bool
  */
-bool host_command::is_optional()
+bool host_command::is_optional(void)
 {
     if( cur_cmd == -1 || cur_param == -1 )
         return false;
@@ -508,15 +521,15 @@ bool host_command::is_optional()
  *
  * @return bool
  */
-bool host_command::no_more_parameters()
+bool host_command::no_more_parameters(void)
 {
-    if( cur_cmd == -1 || state & ( hcmd_state_EOL | hcmd_state_invalid )
+    if( cur_cmd == -1 || state & ( hc_state_EOL | hc_state_invalid )
         || commands[cur_cmd]->params.size() == 0 )
         return true;
 
     // if it is the last parameter and is already complete?
-    return ( state & hcmd_state_complete ) && 
-           ( cur_param + 1 == static_cast<int>(commands[cur_cmd]->params.size()));
+    return ( state & hc_state_complete ) && 
+           ( cur_param + 1 == static_cast<int>( commands[cur_cmd]->params.size() ) );
 } 
 
 /**
@@ -524,12 +537,12 @@ bool host_command::no_more_parameters()
 *
 * @return void
 */
-void host_command::discard()
+void host_command::discard(void)
 {
-    if (state == hcmd_state_clean || state & hcmd_state_EOL)
-        init_for_new_input(hcmd_state_clean); // Clean or already got EOL. just marking clean
+    if (state == hc_state_clean || state & hc_state_EOL)
+        init_for_new_input( hc_state_clean ); // Clean or already got EOL. Just marking as clean
     else
-        init_for_new_input(hcmd_state_invalid); // Will wait for EOL
+        init_for_new_input( hc_state_invalid ); // Will wait for EOL
 }
 
 /**
@@ -540,27 +553,28 @@ void host_command::discard()
  * To have a low-memory footprint we'll store and scan
  * for a maximum of one parameter at the time.
  */
-int host_command::check_input( )
+int host_command::check_input(void)
 {
     // checking for previous act's completion and moving forward if necessary
-    if ( cur_cmd > -1 && (state & hcmd_state_complete) ) // have previous parameter complete
+    if ( cur_cmd > -1 && (state & hc_state_complete) ) // have previous parameter complete
     {
         // if got all params already and we're in the complete state, then init for next command
-        if ( cur_param + 1 == static_cast<int>(commands[ cur_cmd ]->params.size()) ) // no params or last one
+        if ( cur_param + 1 == static_cast<int>( commands[ cur_cmd ]->params.size() ) ) // no params or last one
         {
-            init_for_new_input( hcmd_state_clean );
+            init_for_new_input( hc_state_clean );
         }
+
         else // we'll wait for the next parameter then
         {
             cur_param++;
-            state = hcmd_state_param; // we need to reset previous parameter state completely
+            state = hc_state_param; // we need to reset previous parameter state completely
             buf_pos = 0;
         }
     }
 
-    if ( state & hcmd_state_EOL ) // maybe got a command with no params or EOL on optional params
+    if ( state & hc_state_EOL ) // maybe got a command with no params or EOL on optional params
     {
-        init_for_new_input( hcmd_state_clean );
+        init_for_new_input( hc_state_clean );
     }
 
     unsigned work_till = 0; // unititalized state
@@ -587,15 +601,15 @@ int host_command::check_input( )
 
         if ( buf_pos == buf_len ) // overflow. discarding command
         {
-            if ( flags & host_cmd_flag_interactive )
-                source->println( "\n? Too long input discarded till EOL." );
+            if ( flags & hc_flag_interactive )
+                source->println( "\n? Too long input. Will be discarded till EOL." );
     
             if ( prompt.length() > 0 )
                 source->print( prompt );
 
             discard();
             
-            err_code = host_command_error_param_too_long;
+            err_code = hc_error_param_too_long;
 
             return -1;
         }
@@ -605,17 +619,17 @@ int host_command::check_input( )
         if ( c < 0 ) // error?
             return -1;
 
-        if( state & hcmd_state_invalid ) // waiting for invalidated input to be ended with LF
+        if( state & hc_state_invalid ) // waiting for invalidated input to be ended with LF
         {
             if ( c == '\n' || c == '\r' )
-                init_for_new_input( hcmd_state_clean );
+                init_for_new_input( hc_state_clean );
 
             continue;
         }
 
-        if ( state & hcmd_state_escape ) // this char is escaped
+        if ( state & hc_state_escape ) // this char is escaped
         {
-            state &= ~hcmd_state_escape;
+            state &= ~hc_state_escape;
 
             buf[ buf_pos++ ] = c;
 
@@ -623,28 +637,29 @@ int host_command::check_input( )
         }
 
         // always drop leading spaces
-        if ( buf_pos == 0 && c != '\n' && c != '\r' && !(state & hcmd_state_got_quotes) && isspace(c))
+        if ( buf_pos == 0 && c != '\n' && c != '\r' && !(state & hc_state_got_quotes)
+             && isspace(c))
         {
             continue;
         }
 
         if ( c == '\n' || c == '\r' || c == ' ' || c == '\t' ) // checking for EOL or end of cmd/param
         {
-            if (!(state & hcmd_state_got_some) && ( c == '\n' || c == '\r' ) ) // skipping empty lines quick
+            if ( ! (state & hc_state_got_some) && ( c == '\n' || c == '\r' ) ) // skipping empty lines quick
                 continue;
 
-            if ( state & hcmd_state_cmd ) // command name
+            if ( state & hc_state_cmd ) // command name
             {
                 //if (buf_pos == 0)
                 //{
-                //    init_for_new_input(hcmd_state_clean);
+                //    init_for_new_input(hc_state_clean);
                 //    continue;
                 //}
 
                 if ( c == '\n' || c == '\r' )
-                    state |= hcmd_state_EOL;
+                    state |= hc_state_EOL;
 
-                state |= hcmd_state_complete;
+                state |= hc_state_complete;
 
                 buf[ buf_pos ] = '\0';
 
@@ -656,7 +671,7 @@ int host_command::check_input( )
             host_command_element *cmd = commands[ cur_cmd ];
 
             // any space is valid in quoted string (if we're not over the limit though)
-            if ( cmd->params[ cur_param ] & hcmd_t_qstr && ! ( state & hcmd_state_skip ) )
+            if ( cmd->params[ cur_param ] & hcmd_t_qstr && ! ( state & hc_state_skip ) )
             {
                 buf[ buf_pos++ ] = c;
 
@@ -665,14 +680,14 @@ int host_command::check_input( )
 
             if ( c == '\n' || c == '\r' )
             {
-                state |= hcmd_state_EOL;
+                state |= hc_state_EOL;
 
                 // checking if this or next param is not optional
                 if ( buf_pos == 0 ||
                      ( cur_param + 1 < static_cast<int>(cmd->params.size()) &&
                        cur_param + 1 < cmd->optional_start ) )
                 {
-                    if ( flags & host_cmd_flag_interactive )
+                    if ( flags & hc_flag_interactive )
                     {
                         source->print( "\nAttempt to skip non-optional parameter #" );
                         source->println( cur_param + 1 );
@@ -681,35 +696,35 @@ int host_command::check_input( )
                     if ( prompt.length() > 0)
                         source->print( prompt );
 
-                    err_code = host_command_error_required_missing;
+                    err_code = hc_error_required_missing;
 
-                    state |= hcmd_state_invalid;
+                    state |= hc_state_invalid;
 
                     return -1;
                 }
             } // if EOL
 
-            state |= hcmd_state_complete;
+            state |= hc_state_complete;
 
             buf[buf_pos] = '\0';
 
             return 1; // got another complete parameter
         } // got EOL or space
 
-        if ( state & hcmd_state_skip ) // we need to skip till this param end
+        if ( state & hc_state_skip ) // we need to skip till this param end
             continue;
 
-        if ( (flags & host_cmd_flag_escapes) && c == '\\' )
+        if ( (flags & hc_flag_escapes) && c == '\\' )
         {
-            state |= hcmd_state_escape;
+            state |= hc_state_escape;
 
             continue;
         }
 
-        if ( state == hcmd_state_clean || state & hcmd_state_cmd ) // still waiting for a command name to complete
+        if ( state == hc_state_clean || state & hc_state_cmd ) // still waiting for a command name to complete
         {
             buf[ buf_pos++ ] = c;
-            state |= hcmd_state_cmd;
+            state |= hc_state_cmd;
 
             continue;
         }
@@ -720,9 +735,10 @@ int host_command::check_input( )
 
         // checking if our parameter is within user-requested size
         // NOTE: (now) this is used for strings only
-        if ( cmd->params[cur_param] & 0xffff && ( ( cmd->params[cur_param] & 0xffff ) == buf_pos ) )
+        if ( cmd->params[cur_param] & 0xffff && 
+            ( static_cast<int>(cmd->params[cur_param] & 0xffff ) == buf_pos ) )
         {
-            state |= hcmd_state_skip;
+            state |= hc_state_skip;
             buf[ buf_pos ] = '\0';
             continue;
         }
@@ -732,21 +748,21 @@ int host_command::check_input( )
         {
             if (c == '"' || c == '\'') // check for the beginning/ending quote
             {
-                if ( ! (state & hcmd_state_got_quotes) ) // is it starting quote?
+                if ( ! (state & hc_state_got_quotes) ) // is it starting quote?
                 {
                     // remember what type of quote used at the beginning
                     if (c == '"')
-                        state |= hcmd_state_d_quote;
+                        state |= hc_state_d_quote;
                     else
-                        state |= hcmd_state_s_quote;
+                        state |= hc_state_s_quote;
 
                     continue; // don't store quotes
                 }
 
-                else if ((c == '"' && (state & hcmd_state_d_quote)) // closing quote?
-                    || (c == '\'' && (state & hcmd_state_s_quote)))
+                else if ((c == '"' && (state & hc_state_d_quote)) // closing quote?
+                    || (c == '\'' && (state & hc_state_s_quote)))
                 {
-                    state |= hcmd_state_complete;
+                    state |= hc_state_complete;
 
                     buf[buf_pos] = '\0';
 
@@ -755,11 +771,11 @@ int host_command::check_input( )
             } // got quote
 
             // if 1st char is not a quote then set error state
-            else if ( buf_pos == 0 && ! (state & hcmd_state_got_quotes))
+            else if ( buf_pos == 0 && ! (state & hc_state_got_quotes))
             {
-                err_code = host_command_error_missing_quotes;
+                err_code = hc_error_missing_quotes;
 
-                state |= hcmd_state_invalid;
+                state |= hc_state_invalid;
                 
                 return -1;
             }
@@ -777,13 +793,13 @@ int host_command::check_input( )
 
     if (cur_cmd == -1)
     {
-        if (flags & host_cmd_flag_interactive)
+        if (flags & hc_flag_interactive)
             source->println("\nUnknown command.");
 
         if (prompt.length() > 0)
             source->print( prompt );
 
-        init_for_new_input(hcmd_state_invalid);
+        init_for_new_input(hc_state_invalid);
 
         return -1;
     }
@@ -818,7 +834,7 @@ int host_command::find_command_index(const char* _name)
  */
 bool host_command::get_bool( )
 {
-    if ( cur_cmd == -1 || state & hcmd_state_invalid || cur_param == -1 )
+    if ( cur_cmd == -1 || state & hc_state_invalid || cur_param == -1 )
         return false;
 
     // assume that we'll deal with 'ok','on','true','y','yes' or non-zero number as true
@@ -856,7 +872,7 @@ bool host_command::get_bool( )
  */
 uint8_t host_command::get_byte( )
 {
-    if (cur_cmd == -1 || state & hcmd_state_invalid || cur_param == -1 )
+    if (cur_cmd == -1 || state & hc_state_invalid || cur_param == -1 )
         return 0;
 
     return buf[0];
@@ -869,7 +885,7 @@ uint8_t host_command::get_byte( )
  */
 int host_command::get_int( )
 {
-    if (cur_cmd == -1 || state & hcmd_state_invalid || cur_param == -1 )
+    if (cur_cmd == -1 || state & hc_state_invalid || cur_param == -1 )
         return 0;
 
     return atoi( (char*)buf );
@@ -882,7 +898,7 @@ int host_command::get_int( )
  */
 float host_command::get_float()
 {
-    if (cur_cmd == -1 || state & hcmd_state_invalid || cur_param == -1 )
+    if (cur_cmd == -1 || state & hc_state_invalid || cur_param == -1 )
         return 0.0f;
 
     return static_cast<float>(atof( (char*)buf ));
@@ -895,7 +911,7 @@ float host_command::get_float()
  */
 const char* host_command::get_str()
 {
-    if (cur_cmd == -1 || state & hcmd_state_invalid || cur_param == -1 )
+    if (cur_cmd == -1 || state & hc_state_invalid || cur_param == -1 )
     {
         buf[0] = '\0';
         return (const char*)buf;
