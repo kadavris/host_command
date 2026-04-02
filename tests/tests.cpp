@@ -15,7 +15,7 @@
 #include "test_Stream.hpp"
 #include "../include/host_command.hpp"
 
-#ifdef _MSC_VER
+#if defined(_MSC_VER) || defined(__CYGWIN__)
 // arduino millis() emulation. for testing purposes we don't need to account for more than a minute of run time
 unsigned long millis()
 {
@@ -26,6 +26,7 @@ unsigned long millis()
 }
 
 #else
+// non-windows mocks implementations
 #include <time.h>
 
 // arduino millis() emulation. for testing purposes we don't need to account for more than a minute of run time
@@ -93,7 +94,7 @@ namespace {
         host_command hc(1);
 
         EXPECT_EQ(hc.get_command_id(), -1);
-        EXPECT_STREQ(hc.get_command_name().c_str(), "");
+        EXPECT_STREQ(hc.get_command_name(), "");
         EXPECT_EQ(hc.get_parameter_index(), -1);
         EXPECT_TRUE(hc.is_command_complete());
     }
@@ -105,7 +106,7 @@ namespace {
 
         hc.discard();
         EXPECT_EQ(hc.get_command_id(), -1);
-        EXPECT_STREQ(hc.get_command_name().c_str(), "");
+        EXPECT_STREQ(hc.get_command_name(), "");
         EXPECT_EQ(hc.get_parameter_index(), -1);
         EXPECT_TRUE(hc.is_command_complete());
 
@@ -350,7 +351,7 @@ namespace {
         EXPECT_EQ( hc.get_command_id(), -1 );
 
         EXPECT_TRUE(hc.get_next_command());
-        EXPECT_STREQ( hc.get_command_name().c_str(), "CMD1");
+        EXPECT_STREQ( hc.get_command_name(), "CMD1");
 
         EXPECT_TRUE(hc.has_next_parameter());
         EXPECT_TRUE(hc.get_bool());
@@ -361,7 +362,7 @@ namespace {
 
         EXPECT_TRUE(hc.get_next_command());
         EXPECT_EQ(hc.get_command_id(), 1);
-        EXPECT_STREQ(hc.get_command_name().c_str(), "CMD2");
+        EXPECT_STREQ(hc.get_command_name(), "CMD2");
         
         EXPECT_TRUE(hc.has_next_parameter());
         EXPECT_EQ(hc.get_parameter_index(), 0);
@@ -376,7 +377,7 @@ namespace {
 
         EXPECT_TRUE(hc.get_next_command());
         EXPECT_EQ(hc.get_command_id(), 2);
-        EXPECT_STREQ(hc.get_command_name().c_str(), "CMD3");
+        EXPECT_STREQ(hc.get_command_name(), "CMD3");
 
         EXPECT_TRUE(hc.has_next_parameter());
         EXPECT_TRUE(hc.get_bool());
@@ -394,7 +395,7 @@ namespace {
 
         EXPECT_TRUE(hc.get_next_command());
         EXPECT_EQ(hc.get_command_id(), 3);
-        EXPECT_STREQ(hc.get_command_name().c_str(), "CMD4");
+        EXPECT_STREQ(hc.get_command_name(), "CMD4");
 
         Serial.add_input("000 ");
 
@@ -432,7 +433,7 @@ namespace {
         EXPECT_TRUE(hc.get_next_command());
         EXPECT_EQ(hc.get_command_id(), 0);
 
-        EXPECT_STREQ(hc.get_command_name().c_str(), "c1");
+        EXPECT_STREQ(hc.get_command_name(), "c1");
 
         EXPECT_TRUE(hc.has_next_parameter());
         EXPECT_EQ(hc.get_int(), 1);

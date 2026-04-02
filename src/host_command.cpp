@@ -2,7 +2,7 @@
  * @brief Use to receive and parse commands, usually via "Serial" class interface.
  * @author Andrej Pakhutin (pakhutin <at> gmail.com)
  * @brief Contains class host_command implementation
- * @version 1.0.4
+ * @version 1.0.41
  *
  * @copyright Copyright (c) 2023+
  *
@@ -75,7 +75,7 @@ const int hc_error_missing_quotes = 7; //< expected quoted string but got no quo
 * 
 * @param s1: string 1
 * @param s2: string 2
-* @return bool: true if equal, false is not
+* @return bool: true if equal, false if not
 */
 static bool same_strings(const char* s1, const char* s2)
 {
@@ -102,7 +102,7 @@ static bool same_strings(const char* s1, const char* s2)
  * 
  * @return const char* const 
  */
-const char* const host_command::errstr()
+const char* const host_command::errstr() const
 {
     return hc_errors[err_code];
 }
@@ -110,8 +110,8 @@ const char* const host_command::errstr()
 /**
  * @brief Internal: initializes class data 
  * 
- * @param _bs size_t: Buffer size
- * @param s Stream*: Source of commands
+ * @param size_t: Buffer size
+ * @param Stream*: Source of commands
  */
 void host_command::_init(size_t _bs, Stream* s)
 {
@@ -133,7 +133,7 @@ void host_command::_init(size_t _bs, Stream* s)
 /**
  * @brief Construct a new host_command object
  * 
- * @param _bs size_t: Buffer size
+ * @param size_t: Buffer size
  */
 host_command::host_command(size_t _bs)
 {
@@ -143,18 +143,49 @@ host_command::host_command(size_t _bs)
 /**
  * @brief Construct a new host_command object
  * 
- * @param _bs size_t: Buffer size
- * @param src Stream*: Source of commands
+ * @param size_t: Buffer size
+ * @param Stream*: Source of commands
  */
 host_command::host_command( size_t _bs, Stream* src )
 {
     _init( _bs, src );
 }
 
+/**
+ * @brief Move constructor
+ *
+ * @param host_command &&: Original object
+ */
+host_command::host_command( host_command&& src ) noexcept
+{
+    buf = src.buf;
+    buf_len = src.buf_len;
+    buf_pos = src.buf_pos;
+    src.buf = nullptr;
+    src.buf_len = src.buf_pos = 0;
+
+    commands = std::move(src.commands);
+    cur_cmd = src.cur_cmd;
+    cur_param = src.cur_param;
+    err_code = src.err_code;
+    flags = src.flags;
+    max_time = src.max_time;
+    prompt = src.prompt;
+    src.prompt = nullptr;
+    source = src.source;
+    state = src.state;
+}
+
 host_command::~host_command()
 {
-    if (buf != nullptr)
-        delete buf;
+    if ( buf != nullptr )
+        delete[] buf;
+
+    while ( ! commands.empty() )
+    {
+        delete commands.back();
+        commands.pop_back();
+    }
 }
 
 /**
@@ -173,7 +204,7 @@ void host_command::init_for_new_input( uint32_t _state )
 }
 
 /**
-* @brief set interactive mode on/off. if true then we'll produce some answer/error messages to host sometimes
+* @brief Set interactive mode on/off. if true then we'll produce some answer/error messages to host sometimes
 * 
 * @param bool: new mode
 * @return void
@@ -185,9 +216,7 @@ void host_command::set_interactive( bool _mode, const char* _prompt = nullptr )
     else
         flags &= ~hc_flag_interactive;
 
-    prompt.clear();
-    if ( _prompt != nullptr )
-        prompt += _prompt;
+    prompt = _prompt;
 }
 
 /**
@@ -204,11 +233,9 @@ void host_command::allow_escape( bool _mode )
 }
 
 /**
- * @brief sets maximum time for internal processes
+ * @brief sets maximum time for internal processes. Use to prevent timely blocks on long inputs.
  * 
  * @param int _millis: milliseconds. set < 0 for no timeout
- *
- * Use to prevent timely blocks on long inputs.
  */
 void host_command::limit_time( int _millis )
 {
@@ -218,18 +245,18 @@ void host_command::limit_time( int _millis )
 
 /** @brief Define the new command in full. Use for quick, C-style definitions
  *
- * @param String: command name
- * @param String: parameters definition
- * @return int: -1 if _params are incorrect or number of parameters recorded
- *
  * The second parameter uses printf-like codes to define command parameters if any.
  * The format is: [?][length]type, where:
  *   ? - this marks the beginning of optional parameters
  *   length - integer. set _maximum_ input length.
  *   type - printf-like: b-bool, c-byte, d-int, f-float, s-string, q-quoted string
  *          see known_command_codes enum
+ *
+ * @param const char*: command name
+ * @param const char*: parameters definition
+ * @return int: -1 if _params are incorrect or number of parameters recorded
  */
-int host_command::new_command( const String& _name, const String& _params )
+int host_command::new_command( const char* _name, const char* _params )
 {
     if ( ! new_command( _name ) )
         return -1;
@@ -238,8 +265,9 @@ int host_command::new_command( const String& _name, const String& _params )
 
     uint32_t param_info = 0;
     uint32_t param_len = 0;
+    int _plen = strlen(_params);
 
-    for ( unsigned i = 0; i < _params.length(); ++i )
+    for ( unsigned i = 0; i < _plen; ++i )
     {
         switch ( _params[i] )
         {
@@ -296,7 +324,7 @@ int host_command::new_command( const String& _name, const String& _params )
                 else
                 {
                     err_code = hc_error_bad_pcode;
-                        commands.pop_back(); // try to do a basic clean up. Probably not worth it anyway
+                    commands.pop_back(); // try to do a basic clean up. Probably not worth it anyway
                     return -1;
                 }
         } // switch (_params[i])
@@ -321,21 +349,20 @@ int host_command::new_command( const String& _name, const String& _params )
     return static_cast<int>( cmd->params.size() );
 }
 
-/** @brief Start to define the new command. Use this for relaxed, step by step definitions
+/** @brief Start to define a new command. Use this for relaxed, step by step definitions
  *
- * @param String: command name
+ * @param const char*: command name
  * @return bool: if added OK
- *
  */
-bool host_command::new_command( const String& _name )
+bool host_command::new_command( const char* _name )
 {
-    if ( find_command_index( _name.c_str() ) != -1 )
+    if ( find_command_index( _name ) != -1 )
     {
         err_code = hc_error_duplicate_command;
         return false;
     }
 
-    host_command_element* cmd = new( host_command_element );
+    host_command_element* cmd = new host_command_element;
     cmd->name = _name;
     cmd->optional_start = INT_MAX;
     commands.push_back( cmd );
@@ -343,29 +370,61 @@ bool host_command::new_command( const String& _name )
     return true;
 }
 
+/** @brief Continue to define a new command: add new boolean parameter
+ *
+ * A new_command() should be called before to have a command to add parameters to.
+ *
+ * @return void
+ */
 void host_command::add_bool_param(void)
 {
     commands.back()->params.push_back( hcmd_t_bool );
 }
 
+/** @brief Continue to define a new command: add new parameter of a byte type
+ *
+ * A new_command() should be called before to have a command to add parameters to.
+ * 
+ * @return void
+ */
 void host_command::add_byte_param(void)
 {
     commands.back()->params.push_back( hcmd_t_byte );
 }
 
+/** @brief Continue to define a new command: add new int parameter
+ *
+ * A new_command() should be called before to have a command to add parameters to.
+ * 
+ * @return void
+ */
 void host_command::add_int_param(void)
 {
     commands.back()->params.push_back( hcmd_t_int );
 }
 
+/** @brief Continue to define a new command: add new float parameter
+ *
+ * A new_command() should be called before to have a command to add parameters to.
+ * 
+ * @return void
+ */
 void host_command::add_float_param(void)
 {
     commands.back()->params.push_back( hcmd_t_float );
 }
 
+/** @brief Continue to define a new command: add new unquoted string parameter
+ *
+ * A new_command() should be called before to have a command to add parameters to.
+ * Error processing: if len is 0 or bigger than buffer length then error code will be set and len will be set to match buffer length - 1.
+ *
+ * @param uint16_t len: maximum length of the string. Default is your buffer length - 1. Max is 65535.
+ * @return void
+ */
 void host_command::add_str_param( uint16_t len = 65535 )
 {
-    if ( len > buf_len - 1 ) //overflow?
+    if ( len == 0 || len > buf_len - 1 ) //overflow?
     {
         err_code = hc_error_bad_length;
         len = buf_len - 1;
@@ -374,17 +433,32 @@ void host_command::add_str_param( uint16_t len = 65535 )
     commands.back()->params.push_back( hcmd_t_str | len );
 }
 
+/**@brief Continue to define a new command: add new quoted string parameter
+ *
+ * A new_command() should be called before to have a command to add parameters to.
+ *
+ * @param uint16_t len: maximum length of the string w/o quotes. Default is your buffer length - 3. Max is 65535.
+ * @return void
+ */
 void host_command::add_qstr_param( uint16_t len = 65535 )
 {
-    if (len > buf_len - 1) //overflow?
+    if ( len == 0 || len > buf_len - 3 || buf_len < 4 ) //overflow?
     {
         err_code = hc_error_bad_length;
-        len = buf_len - 1;
+        len = buf_len - 3;
     }
 
     commands.back()->params.push_back( hcmd_t_qstr | len );
 }
 
+/**@brief Continue to define a new command: inform that the next added parameters will be treated as optional
+ * 
+ * A new_command() should be called before to have a command to add parameters to.
+ * Error processing: if there are no parameters yet or optional parameters were already marked
+ * then no error will be generated and previous state will be unchanged.
+ *
+ * @return void
+ */
 void host_command::optional_from_here(void)
 {
     if ( commands.size() == 0 )
@@ -420,14 +494,14 @@ int host_command::get_command_id(void)
 }
 
 /**
-* @brief Return currently processed command's name
+* @brief Return the name of the command being currently processed
 *
-* @return String: empty if no current command 
+* @return const char*: empty if no current command 
 */
-String host_command::get_command_name(void)
+const char*host_command::get_command_name(void)
 {
     if ( cur_cmd == -1 )
-        return String("");
+        return "";
 
     return commands[cur_cmd]->name;
 }
@@ -437,7 +511,7 @@ String host_command::get_command_name(void)
 *
 * @return bool: true if something got broken
 */
-bool host_command::is_invalid_input(void)
+bool host_command::is_invalid_input(void) const
 {
     return state & hc_state_invalid;
 }
@@ -445,14 +519,14 @@ bool host_command::is_invalid_input(void)
 /**
 * @brief Check if current command processing is formally done
 *
-* @return bool: true if complete
-*
 * Note that return valuee here depends not only on error, no command,
 * or command with EOL received, but also
 *     1) if current parameter is optional
 *     2) or if current parameter is the last by definition and received complete
+*
+* @return bool: true if complete
 */
-bool host_command::is_command_complete(void)
+bool host_command::is_command_complete(void) const
 {
     if( cur_cmd == -1 || ( state & (hc_state_EOL | hc_state_invalid) )
         || is_optional() 
@@ -508,7 +582,7 @@ uint32_t host_command::get_parameter_info(void)
  *
  * @return bool
  */
-bool host_command::is_optional(void)
+bool host_command::is_optional(void) const
 {
     if( cur_cmd == -1 || cur_param == -1 )
         return false;
@@ -521,7 +595,7 @@ bool host_command::is_optional(void)
  *
  * @return bool
  */
-bool host_command::no_more_parameters(void)
+bool host_command::no_more_parameters(void) const
 {
     if( cur_cmd == -1 || state & ( hc_state_EOL | hc_state_invalid )
         || commands[cur_cmd]->params.size() == 0 )
@@ -548,10 +622,9 @@ void host_command::discard(void)
 /**
  * @brief Internal: Check if there is new command/parameter available to process
  * 
- * @return int -1 on error, 0 if no new data arrived yet, 1 if some
- * 
- * To have a low-memory footprint we'll store and scan
- * for a maximum of one parameter at the time.
+ * To have a low-memory footprint we'll store and scan one parameter at the time maximum.
+ *
+ * @return int: -1 on error, 0 if no new data arrived yet, 1 if some
  */
 int host_command::check_input(void)
 {
@@ -604,7 +677,7 @@ int host_command::check_input(void)
             if ( flags & hc_flag_interactive )
                 source->println( "\n? Too long input. Will be discarded till EOL." );
     
-            if ( prompt.length() > 0 )
+            if ( prompt != nullptr )
                 source->print( prompt );
 
             discard();
@@ -693,7 +766,7 @@ int host_command::check_input(void)
                         source->println( cur_param + 1 );
                     }
 
-                    if ( prompt.length() > 0)
+                    if ( prompt != nullptr )
                         source->print( prompt );
 
                     err_code = hc_error_required_missing;
@@ -706,7 +779,7 @@ int host_command::check_input(void)
 
             state |= hc_state_complete;
 
-            buf[buf_pos] = '\0';
+            buf[ buf_pos ] = '\0';
 
             return 1; // got another complete parameter
         } // got EOL or space
@@ -735,8 +808,8 @@ int host_command::check_input(void)
 
         // checking if our parameter is within user-requested size
         // NOTE: (now) this is used for strings only
-        if ( cmd->params[cur_param] & 0xffff && 
-            ( static_cast<int>(cmd->params[cur_param] & 0xffff ) == buf_pos ) )
+        if ( cmd->params[cur_param] & 0xffff
+             && ( static_cast<int>( cmd->params[cur_param] & 0xffff ) == buf_pos ) )
         {
             state |= hc_state_skip;
             buf[ buf_pos ] = '\0';
@@ -759,8 +832,8 @@ int host_command::check_input(void)
                     continue; // don't store quotes
                 }
 
-                else if ((c == '"' && (state & hc_state_d_quote)) // closing quote?
-                    || (c == '\'' && (state & hc_state_s_quote)))
+                else if ( (c == '"' && (state & hc_state_d_quote)) // closing quote?
+                    || (c == '\'' && (state & hc_state_s_quote)) )
                 {
                     state |= hc_state_complete;
 
@@ -791,12 +864,12 @@ int host_command::check_input(void)
     // checking if we know this command
     cur_cmd = find_command_index((const char*)buf);
 
-    if (cur_cmd == -1)
+    if ( cur_cmd == -1 )
     {
-        if (flags & hc_flag_interactive)
+        if ( flags & hc_flag_interactive )
             source->println("\nUnknown command.");
 
-        if (prompt.length() > 0)
+        if ( prompt != nullptr )
             source->print( prompt );
 
         init_for_new_input(hc_state_invalid);
@@ -810,14 +883,14 @@ int host_command::check_input(void)
 /**
 * @brief Internal: return index of command by it's name
 * 
-* @param: char* - name to find
-* @return: -1 on error or index
+* @param const char* - name to find
+* @return -1 on error or index
 */
 int host_command::find_command_index(const char* _name)
 {
     for ( unsigned i = 0; i < commands.size(); ++i)
     {
-        if (same_strings(commands[i]->name.c_str(), (char*)_name))
+        if ( same_strings(commands[i]->name, _name) )
             return i;
     }
 
@@ -832,7 +905,7 @@ int host_command::find_command_index(const char* _name)
  * 
  * @return bool: true/false
  */
-bool host_command::get_bool( )
+bool host_command::get_bool( void ) const
 {
     if ( cur_cmd == -1 || state & hc_state_invalid || cur_param == -1 )
         return false;
@@ -840,103 +913,118 @@ bool host_command::get_bool( )
     // assume that we'll deal with 'ok','on','true','y','yes' or non-zero number as true
     char first = tolower(*buf);
 
+    // on/ok
     if (first == 'o' && buf[2] == '\0' && ( tolower(buf[1]) == 'k' || tolower(buf[1]) == 'n' ) )
         return true;
 
     if (first == 't')
-        return same_strings((char*)buf, "true");
+        return same_strings( (const char*)buf, "true" );
 
-    if (first == 'y')
+    if (first == 'y')  // y/yes
     {
-        if (buf[1]) // check for full word
-            return same_strings((char*)buf, "yes");
+        if ( buf[1] ) // check for full word
+            return same_strings( (const char*)buf, "yes" );
         else
             return true;
     }
 
-    char *c = (char*)buf; // check if non-zero number
-    while (isdigit(*c))
+    char *c = (char*)buf; // check if a non-zero number
+    while ( isdigit(*c) )
     {
-        if (*c != '0')
+        if ( *c != '0' )
             return true;
         ++c;
     }
 
-     return false;
+    return false;
 }
 
 /**
- * @brief Return parameter as single byte value
+ * @brief Return parameter as a single byte value
  * 
  * @return uint8_t 
  */
-uint8_t host_command::get_byte( )
+uint8_t host_command::get_byte( void ) const
 {
-    if (cur_cmd == -1 || state & hc_state_invalid || cur_param == -1 )
+    if ( cur_cmd == -1 || state & hc_state_invalid || cur_param == -1 )
         return 0;
 
     return buf[0];
 }
 
 /**
- * @brief Return parameter as integer number
+ * @brief Return parameter as an integer number
  * 
  * @return int 
  */
-int host_command::get_int( )
+int host_command::get_int( void ) const
 {
-    if (cur_cmd == -1 || state & hc_state_invalid || cur_param == -1 )
+    if ( cur_cmd == -1 || state & hc_state_invalid || cur_param == -1 )
         return 0;
 
-    return atoi( (char*)buf );
+    return atoi( (const char*)buf );
 }
 
 /**
- * @brief Return parameter as floating point number
+ * @brief Return parameter as a floating point number
  * 
  * @return float 
  */
-float host_command::get_float()
+float host_command::get_float( void ) const
 {
-    if (cur_cmd == -1 || state & hc_state_invalid || cur_param == -1 )
+    if ( cur_cmd == -1 || state & hc_state_invalid || cur_param == -1 )
         return 0.0f;
 
     return static_cast<float>(atof( (char*)buf ));
 }
 
 /**
- * @brief Return parameter as raw char. At least try to return complete or empty string
+ * @brief Return parameter as a raw char*.
+ *
+ * At least it'll try to return either complete or empty string.
+ * NOTE: This is a non-const function. The end of the buffer contents will be set to '\0' to make sure that returned string is null-terminated.
+ * So do not expect that the buffer will be unchanged after this call.
  *
  * @return const char*
  */
-const char* host_command::get_str()
+const char* host_command::get_str( void )
 {
-    if (cur_cmd == -1 || state & hc_state_invalid || cur_param == -1 )
+    if ( cur_cmd == -1 || state & hc_state_invalid || cur_param == -1 )
     {
         buf[0] = '\0';
         return (const char*)buf;
     }
 
-    buf[buf_pos] = '\0';
+    if ( buf_pos == buf_len )
+        buf[buf_pos - 1] = '\0';
+    else
+        buf[buf_pos] = '\0';
 
     return (const char*)buf;
 }
 
 /**
-* @brief Fill destination buffer with requested number of bytes from source
+* @brief Fill the buffer with requested number of bytes from the source
 * 
 * @param char* dst - destination buffer
 * @param int len - amount of data to get
 * @return bool: true if OK, false in case of problems
-* 
 */
 bool host_command::fill_buffer(char* dst, int len)
 {
     int pos = 0;
     int need = 0;
+    unsigned work_till = max_time > 0 ? millis() + max_time : 0;
+
 
     for (;; delay(200)) // we'll loop while there is still some data in the stream
     {
+        if ( work_till ) // timeout is set - checking
+        {
+            if ( millis() >= work_till )
+                return -1;
+        }
+
         int ready = source->available();
 
         if (ready < 0) // some error
