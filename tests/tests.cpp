@@ -244,6 +244,16 @@ namespace {
         EXPECT_TRUE(hc.is_command_complete());
         EXPECT_TRUE(hc.no_more_parameters());
 
+		// Re-test with non-optional parameter missing
+        Serial.add_input("Co1   \n");
+        EXPECT_TRUE(hc.get_next_command());
+        EXPECT_EQ(hc.get_command_id(), 0);
+
+        EXPECT_EQ(hc.get_parameter_index(), -1);
+        EXPECT_FALSE(hc.is_command_complete());
+
+        EXPECT_FALSE(hc.has_next_parameter());
+
         // CO2 command has buggy param definition, so we skip it now
 
         Serial.add_input("co3 12 34 56\n");

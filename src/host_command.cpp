@@ -46,8 +46,8 @@ const uint32_t hc_state_s_quote        = 0x00000020; //< got ' - quoted string. 
 const uint32_t hc_state_escape         = 0x00000040; //< got escape symbol 
 const uint32_t hc_state_skip           = 0x00000080; //< skip input till the next param (used if there are max length specified)
 const uint32_t hc_state_invalid        = 0x10000000; //< got invalid data. waiting for EOL
-const uint32_t hc_state_got_some   = hc_state_cmd | hc_state_param; //< if we started to process cmd parts already
-const uint32_t hc_state_got_quotes = hc_state_d_quote | hc_state_s_quote; //< got a 1st quote of quoted string. used for sanity checking
+constexpr uint32_t hc_state_got_some   = hc_state_cmd | hc_state_param; //< if we started to process cmd parts already
+constexpr uint32_t hc_state_got_quotes = hc_state_d_quote | hc_state_s_quote; //< got a 1st quote of quoted string. used for sanity checking
 
 static const char* hc_errors[] =
 {
@@ -278,7 +278,7 @@ int host_command::new_command( const char* _name, const char* _params )
                     return -1;
                 }
 
-                cmd->optional_start = static_cast<int>(cmd->params.size()) - 1;
+                cmd->optional_start = static_cast<int>(cmd->params.size());
                 break;
             case command_code_bool:
                 param_info |= hcmd_t_bool;
@@ -674,11 +674,13 @@ int host_command::check_input(void)
 
         if ( buf_pos == buf_len ) // overflow. discarding command
         {
-            if ( flags & hc_flag_interactive )
-                source->println( "\n? Too long input. Will be discarded till EOL." );
-    
-            if ( prompt != nullptr )
-                source->print( prompt );
+            if (flags & hc_flag_interactive)
+            {
+                source->println("\n? Too long input. Will be discarded till EOL.");
+
+                if (prompt != nullptr)
+                    source->print(prompt);
+            }
 
             discard();
             
@@ -709,7 +711,7 @@ int host_command::check_input(void)
             continue;
         }
 
-        // always drop leading spaces
+		// always drop leading spaces in simple cases, but not in quoted strings (if we got some already)
         if ( buf_pos == 0 && c != '\n' && c != '\r' && !(state & hc_state_got_quotes)
              && isspace(c))
         {
@@ -764,10 +766,10 @@ int host_command::check_input(void)
                     {
                         source->print( "\nAttempt to skip non-optional parameter #" );
                         source->println( cur_param + 1 );
-                    }
 
-                    if ( prompt != nullptr )
-                        source->print( prompt );
+                        if ( prompt != nullptr )
+                            source->print( prompt );
+                    }
 
                     err_code = hc_error_required_missing;
 
@@ -821,7 +823,7 @@ int host_command::check_input(void)
         {
             if (c == '"' || c == '\'') // check for the beginning/ending quote
             {
-                if ( ! (state & hc_state_got_quotes) ) // is it starting quote?
+                if ( ! (state & hc_state_got_quotes) ) // is it the opening quote?
                 {
                     // remember what type of quote used at the beginning
                     if (c == '"')
@@ -832,7 +834,7 @@ int host_command::check_input(void)
                     continue; // don't store quotes
                 }
 
-                else if ( (c == '"' && (state & hc_state_d_quote)) // closing quote?
+                else if ( (c == '"' && (state & hc_state_d_quote)) // matching closing quote?
                     || (c == '\'' && (state & hc_state_s_quote)) )
                 {
                     state |= hc_state_complete;
@@ -866,11 +868,13 @@ int host_command::check_input(void)
 
     if ( cur_cmd == -1 )
     {
-        if ( flags & hc_flag_interactive )
+        if (flags & hc_flag_interactive)
+        {
             source->println("\nUnknown command.");
 
-        if ( prompt != nullptr )
-            source->print( prompt );
+            if (prompt != nullptr)
+                source->print(prompt);
+        }
 
         init_for_new_input(hc_state_invalid);
 
@@ -1004,20 +1008,26 @@ const char* host_command::get_str( void )
 }
 
 /**
-* @brief Fill the buffer with requested number of bytes from the source
+* @brief Fill arbitrary buffer with requested number of bytes from the pre-set source for this object.
+*
+* Use this if you want to get some raw data instead of text parameters.
+* Usually you want to set up a command without parameters for a fixed-size package or with a data length parameter
+* and then use this method to get the data you need.
+* Function will block until max_time is out or requested amount of data is received.
+* Use limit_time() to set max_time if you want to have a timeout.
 * 
-* @param char* dst - destination buffer
-* @param int len - amount of data to get
-* @return bool: true if OK, false in case of problems
+* @param char* - destination buffer
+* @param int - amount of data to get
+* @return bool: true if OK, false in case of problems or timeout (if max_time is set)
 */
 bool host_command::fill_buffer(char* dst, int len)
 {
-    int pos = 0;
-    int need = 0;
+    int dst_offset = 0;
+    int need_count = 0;
     unsigned work_till = max_time > 0 ? millis() + max_time : 0;
 
 
-    for (;; delay(200)) // we'll loop while there is still some data in the stream
+    for (; len ; delay(200)) // we'll loop while there is still some data in the stream
     {
         if ( work_till ) // timeout is set - checking
         {
@@ -1025,19 +1035,24 @@ bool host_command::fill_buffer(char* dst, int len)
                 return -1;
         }
 
-        int ready = source->available();
+        int count = source->available();
 
-        if (ready < 0) // some error
+        if (count < 0) // some error
             return false;
 
-        if (ready == 0) // nothing yet
+        if (count == 0) // nothing yet
             continue;
 
-        need = ready < len - pos ? ready : len - pos;
+        need_count = count < len ? count : len;
 
-        ready = static_cast<int>(source->readBytes(dst + pos, need));
+        count = static_cast<int>(source->readBytes(dst + dst_offset, need_count));
+        
+        if (count < 0) // some error
+			return false;
 
-        if (ready == need)
-            return true;
+        dst_offset += count;
+		len -= count;
     }
+    
+    return true;
 }
