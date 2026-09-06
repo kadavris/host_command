@@ -1,14 +1,13 @@
 # Host commands processing library
 
 Use to create multi-parameter and non-blocking command processor for your device,
-getting input from host or main controller hardware using Stream class interface.  
+getting input from the PC host or other MCU hardware over Stream interface.  
 E.g.:
 
         SetRGBColor led1 255 255 255
         LED 3 Off
         LCDTEXT "Hello World!"
         REBOOT
-        etc.
 
 Intended to be used with Arduino's framework.  
 
@@ -31,25 +30,25 @@ setup()
 ### Define several commands by using quick, printf-like interface:
 Note that this list numbering is mirroring the actual internal index
 
-0) Command without parameters:
+0) A command without parameters:
 
 ```C++
     hc.new_command( "Command1" );
 ```
 
-1) Require 1 boolean argument
+1) Requires 1 boolean argument
 
 ```C++
     hc.new_command( "Command2", "b" );
 ```
 
-2) Require integer argument, followed by quoted string
+2) Requires integer argument, followed by quoted string
 
 ```C++
     hc.new_command( "Some_command", "dq" );
 ```
 
-3) Require one boolean arg, followed by two **optional** string arguments:
+3) Requires one boolean argument, followed by two **optional** (unquoted) string arguments:
 
 ```C++
     hc.new_command( "Other_command", "b ? s s" );
@@ -61,9 +60,10 @@ Note that this list numbering is mirroring the actual internal index
 ```C++
 loop()
 {
-    // check for hext argument or a new command
+    // check for the next argument or a new command
     if ( hc.no_more_parameters() && ! hc.get_next_command() )
     {
+        // do other stuff for now
         and_now_for_something_completely_different();
         return;
     }
@@ -127,13 +127,13 @@ loop()
 The class name is `host_command`
 
 ### Constructors:
-* `host_command( size_t buffer_size )` - Will use `Serial` as a commands source.
+* `host_command( size_t buffer_size )` - Will use `Serial` as a commands source by default.
    Set buffer size to be latge enough to accomodate the longest parameter any command can expect. Plus one.
 
 * `host_command( size_t buffer_size, Stream* source )`
 
 ### Public properties:
-* `const char* prompt` - if not null and **interactive mode** is **ON** it will be printed to host as a new command prompt.
+* `const char* prompt` - if not set to null and the **interactive mode** is **ON** it will be printed to host as a new command prompt.
 
 * `Stream* source` - The source of commands. Yes you can switch this on the fly if you're so bold.
 
@@ -141,13 +141,14 @@ The class name is `host_command`
 * `int new_command( const char* command_name, const char* parameters )` -  return -1 on error.  
   The second parameter uses printf-like codes to define parameters for a command.  
   Format is slightly simpler though: [?][length]\<type>
-  *   ? - this marks beginning of optional parameters
+  *   ? - this marks beginning of an optional parameters
   *   length - integer. set the _maximum_ input length for **string types**.
-  *   type - printf - like: `b`-bool, `c`-byte, `d`-int, `f`-float, `s`-string, `q`-quoted string
+  *   type - single character code: `b`-bool, `c`-byte, `d`-int, `f`-float, `s`-string, `q`-quoted string
   
   Spaces also allowed for readability
 
-* `void new_command( const char* command_name )` - Either this is a command without arguments or you must add parameters definitions via the following methods:
+* `void new_command( const char* command_name )` - Either this is a command without arguments or you must add parameters definitions 
+   via the following methods:
 
 * `void add_bool_param()` - appends boolean parameter to the current command's arguments list
 
@@ -163,11 +164,12 @@ The class name is `host_command`
 * `void add_qstr_param( int max_length )` - appends quoted string parameter to the current command's arguments list.  
   `max_length` is optional and limits the length of input string. Default is for it to fit into your buffer
 
-* `void optional_from_here()` - **this** and all the parameters added later 
+* `void optional_from_here()` - **current** and all the parameters added later 
   will be treated as optional. This means that no error will be generated if some will be omitted on input
 
 ### Processing methods:
-* `bool get_next_command()` - request to begin processing of new command from the input stream. Return `true` if new command is available
+* `bool get_next_command()` - request to begin processing of a new command from the input stream. Return `true` if new command is available.
+  Command's end is a newline character.
 
 * `int get_command_id()` - Return `id` or index of the current command being processed. -1 if there are no command data. 0 - based
 
@@ -179,54 +181,56 @@ The class name is `host_command`
   2) or if current parameter is the last and received complete
   Thus to make sure that **all** parameters were processed use `no_more_parameters()`
 
-* `bool no_more_parameters()` - Return true if all possible parameters were recieved, including optional ones.  
-  This status differ from `is_command_complete()` by accounting for optional parameters too and if there is stil no EOL.
+* `bool no_more_parameters()` - Return true if all possible parameters were received, including optional ones.  
+  This status differ from `is_command_complete()` by accounting for optional parameters too.
 
-* `bool is_invalid_input()` - Return `true` if last attempt to parse data resulted in invalid state.
+* `bool is_invalid_input()` - Return `true` if last attempt to parse data, resulted in invalid state.
 
-* `bool has_next_parameter()` - Return `true` if there are next parameter's data available.
+* `bool has_next_parameter()` - Return `true` if there is next parameter's data available.
 
 * `int get_parameter_index()` - Return the index of the current parameter. 0 - based
 
-* `uint32_t get_parameter_info()` - Return internal bitmask with parameter definition. Well, in case you want to process parameters by type, disregarding their positions.
+* `uint32_t get_parameter_info()` - Return internal bitmask with parameter definition.
+  Well, in case you want to process parameters by type, disregarding their positions.
 
 * `bool is_optional()` - Return `true` if current parameter is optional
 
-### Getters:
+### Parameter type-aware getters:
 * `bool get_bool()` - Return boolean representation of parameter's data.  
-  This is slightly smarter than others. For the `true` value it expect the one of case-insensitive strings: *"on", "true", "yes", "y"* or any positive, non-zero number, e.g.  *1, 42 or 007*
+  This is slightly smarter than others. For the `true` value it expect the one of case-insensitive strings:
+  *"on", "true", "yes", "y"* or any positive, non-zero number, e.g.  *1, 42 or 007*
 
 * `uint8_t get_byte()` - Return the first character of parameter.
 
-* `int get_int()` - Converts input string to `int`. In case of any error the value returned is undefined or zero.
+* `int get_int()` - Converts input string to `int`. In case of any error the value returned is 0.
 
-* `float get_float()` - Converts input string to `float`. In case of any error the value returned is undefined or zero.
+* `float get_float()` - Converts input string to `float`. In case of any error the value returned is 0.0.
 
-* `const char* get_str()` - Return a pointer into internal buffer where string parameter data begins.
-  Quotes are removed for the quoted string argument type.
-  If there are errors or data inconsistencies it honestly tries to return an empty string.
-  Data is finalized with `'\0'` character, so you can be sure that it is always null-terminated and safe to use as a C-string.
-  Also it means that you need to set the buffer size large enough.
-  If you want to have a larger data transfers you may want to use `fill_buffer()`
+* `const char* get_str()` - Returns a pointer into internal buffer where string parameter value begins.
+  - Quotes are removed for the quoted string argument type.
+  - If there are errors or data inconsistencies it honestly tries to return an empty string.
+  - Data is is always null-terminated with `'\0'` character, so you can be sure that it is safe to use as a C-string.
+  - Also it means that you need to set the buffer size large enough.
+  - NOTE: If you want to have a larger data transfers you may want to use `fill_buffer()`
 
 ### Other public members:
 * `void set_interactive(bool is_on, const char** new_prompt)` - if true then we'll produce some answer/error messages to host
 
 * `void allow_escape(bool is_on)` - allow the use of escape character `'\'` to mask special characters like end of line or space.  
-  **Enabled by default.**
+  - **Enabled by default.**
 
 * `void discard()` - reset the state and prepare for the next command.  
   If current command is still incomplete it will skip all input up to the next EOL character: `CR or LF`
 
-* `bool fill_buffer(char* dst, int len)` - Fills arbitrary buffer with requested number of bytes from the pre-set source for this object.
-  Use this if you want to get some raw data instead of pure-text parameters.  
-  Usually you want to set up a command without parameters for a fixed-size package or with a data length parameter
+* `bool fill_buffer(char* dst, int len)` - Fills arbitrary buffer with requested number of bytes from the source.
+  - Use this if you want to get some raw data instead of pure-text parameters.  
+  - Usually you want to set up a command without parameters for a fixed-size package or with a data length parameter
   and then use this method to get the data you need.
-  Function will block until max_time is out or requested amount of data is received.
-  Use limit_time() to set max_time if you want to have a timeout.
-  dst is a pointer to the destination buffer
-  len - is the amount of data to get there
-  returns true if all went OK, false in case of problems or timeout (if max_time is set)
+  - Function will block until max_time is out or requested amount of data is received.
+  - Use limit_time() to set max_time if you want to have a timeout.
+  - dst is a pointer to the destination buffer
+  - len - is the amount of data to get there
+  - returns true if all went OK, false in case of problems or timeout (if max_time is set)
 
 * `void limit_time(int)` - sets maximum time for internal processes in milliseconds. Use to prevent timely blocks on long inputs.  
-  default is -1, which is "infinity".
+  default is -1, which means no limit.
