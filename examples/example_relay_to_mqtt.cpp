@@ -1,4 +1,4 @@
-// This code is copyright (c) 2021 by Andrej Pakhutin
+// This code is copyright (c) 2021+ by Andrej Pakhutin
 // Distributed under the GPL-2.0 license
 
 // This project example uses esp8266 as a simple network communication agent
@@ -35,7 +35,7 @@ extern void mqttSubscribe(const char* topic);
 extern void mqttUnSubscribe(const char* topic);
 extern void mqttPublish(const char* topic, void* payload, unsigned length, bool retain = false, int qos = 0 );
 
-host_command hc(1024); // command processor. set buffer to 1024 bytes
+host_command hc(1024); // The command processor. set buffer to 1024 bytes
 const int tmp_buf_size = 1024;
 char tmp_buf[tmp_buf_size]; // for lengthy commands
 
@@ -80,8 +80,6 @@ void setup()
 {
     Serial.begin( 57600 );
 
-    // wifiConnectHandler = WiFi.onStationModeGotIP( onWifiConnect );
-    // wifiDisconnectHandler = WiFi.onStationModeDisconnected( onWifiDisconnect );
     WiFi.begin( wifi_ssid, wifi_password );
 
     connectToWifi();
@@ -104,13 +102,15 @@ void processCommandLine()
     // these used to store arguments between this function calls
     static bool retain = false;
     static int msg_len = 0;
-    static String topic;
-    static String msg;
 
-    // check for hext argument or a new command
-    // because some ccommands have optional arguments,
-    // we need to be sure that none of it will be thrown away
-    // so we use no_more_parameters() instead of is_command_complete()
+	// NOTE: You may want to use statically allocated buffers to avoid heap fragmentation. In this example we use String class for simplicity, but in production code you may want to avoid it.
+	static String topic;  // topic for mqtt publish/subscribe
+	static String msg; // message for mqtt publish
+
+    // Check for the hext argument or a new command.
+    // Because some ccommands have optional arguments,
+    // we need to be sure that none of it will be thrown away.
+    // So we use no_more_parameters() instead of is_command_complete()
     if ( hc.no_more_parameters() && ! hc.get_next_command() )
         return;
 
@@ -126,22 +126,22 @@ void processCommandLine()
             return;
 
         case CMD_DEBUG:
-            if ( hc.has_next_parameter() )
+            if ( hc.fetch_next_parameter() )
                 debug = hc.get_bool();  // boolean "true" parameters can be "true", "on", "yes" and so on.
             break;
 
         case CMD_MSUB: // "mqttSub topic" - subscribe to topic
-            if ( hc.has_next_parameter() )
+            if ( hc.fetch_next_parameter() )
                 mqttSubscribe( hc.get_str() );
             break;
 
         case CMD_MUNSUB: // "mqttUnSub  topic" - un-subscribe from topic
-            if ( hc.has_next_parameter() )
+            if ( hc.fetch_next_parameter() )
                 mqttUnSubscribe( hc.get_str() );
             break;
 
         case CMD_PUB: // "mqttPub topic message [retain]" - publish message to topic, retain
-            if ( ! hc.has_next_parameter() )
+            if ( ! hc.fetch_next_parameter() )
                 break;
 
             if ( hc.get_parameter_index() == 0 )
