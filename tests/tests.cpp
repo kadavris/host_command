@@ -2,10 +2,10 @@
  * @file tests.cpp
  * @author Andrej Pakhutin (pakhutin <at> gmail.com)
  * @brief Contains testing for class host_command
- * @version 1.0.31
- * @date 2023-04-08
+ * @version 1.0.42
+ * @date 2026-09-06
  *
- * @copyright Copyright (c) 2023
+ * @copyright Copyright (c) 2023+
  * 
  * The repo is in github.com/kadavris
  */
@@ -16,6 +16,7 @@
 #include "../include/host_command.hpp"
 
 #if defined(_MSC_VER) || defined(__CYGWIN__)
+#include <Windows.h>
 // arduino millis() emulation. for testing purposes we don't need to account for more than a minute of run time
 unsigned long millis()
 {
@@ -118,7 +119,7 @@ namespace {
         Serial.add_input("CMD1 True\n");
 
         EXPECT_TRUE(hc.get_next_command());
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_TRUE(hc.get_bool());
         EXPECT_EQ(hc.get_command_id(), 0);
         EXPECT_EQ(hc.get_parameter_index(), 0);
@@ -136,7 +137,7 @@ namespace {
         EXPECT_TRUE(hc.get_next_command());
         EXPECT_EQ(hc.get_command_id(), 1);
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_TRUE(hc.get_bool()); // ok
         EXPECT_EQ(hc.get_parameter_index(), 0);
 
@@ -156,17 +157,17 @@ namespace {
         EXPECT_TRUE(hc.get_next_command());
         EXPECT_EQ(hc.get_command_id(), 2);
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_TRUE(hc.get_bool()); // y
         EXPECT_EQ(hc.get_parameter_index(), 0);
 
         EXPECT_FALSE(hc.is_command_complete());
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_EQ(hc.get_int(), 4);
         EXPECT_EQ(hc.get_parameter_index(), 1);
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_EQ(hc.get_int(), 2);
         EXPECT_EQ(hc.get_parameter_index(), 2);
 
@@ -188,7 +189,7 @@ namespace {
         EXPECT_EQ( hc.get_parameter_index(), -1 );
         EXPECT_FALSE( hc.is_command_complete() );
 
-        EXPECT_FALSE( hc.has_next_parameter() );
+        EXPECT_FALSE( hc.fetch_next_parameter() );
         EXPECT_EQ( hc.get_int(), 0 );
         EXPECT_TRUE(hc.is_invalid_input());
 
@@ -200,14 +201,14 @@ namespace {
         EXPECT_TRUE(hc.get_next_command());
         EXPECT_EQ(hc.get_command_id(), 1);
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_EQ(hc.get_parameter_index(), 0);
         EXPECT_EQ(hc.get_int(), 456);
         EXPECT_FALSE(hc.is_invalid_input());
 
         EXPECT_FALSE(hc.is_command_complete());
 
-        EXPECT_FALSE(hc.has_next_parameter());
+        EXPECT_FALSE(hc.fetch_next_parameter());
 
         EXPECT_TRUE(hc.is_invalid_input());
         EXPECT_TRUE(hc.is_command_complete());
@@ -221,8 +222,8 @@ namespace {
         host_command hc(64);
 
         EXPECT_EQ(hc.new_command("CO1", "d ? d"), 2);
-        EXPECT_EQ(hc.new_command("CO2", "d ? d ? d"), -1); // slightly buggy. the command will be in the list though
-        EXPECT_EQ(hc.new_command("CO3", "d ? ddd"), 4);
+        EXPECT_EQ(hc.new_command("CO2", "d ? d ? d"), -1); // buggy-doubly optional. the command will NOT be in the list
+        EXPECT_EQ(hc.new_command("CO3", "d ? ddd"), 4); // index is 1, because of above
 
         Serial.add_input("Co1 123 -456\n");
 
@@ -232,12 +233,12 @@ namespace {
         EXPECT_EQ(hc.get_parameter_index(), -1);
         EXPECT_FALSE(hc.is_command_complete());
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_EQ(hc.get_int(), 123);
-        EXPECT_TRUE(hc.is_command_complete()); // optionals are not counted
+        EXPECT_FALSE(hc.is_command_complete()); // optionals are not counted
         EXPECT_FALSE(hc.no_more_parameters()); // but here they are
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_TRUE(hc.is_optional());
         EXPECT_EQ(hc.get_int(), -456);
 
@@ -252,28 +253,28 @@ namespace {
         EXPECT_EQ(hc.get_parameter_index(), -1);
         EXPECT_FALSE(hc.is_command_complete());
 
-        EXPECT_FALSE(hc.has_next_parameter());
+        EXPECT_FALSE(hc.fetch_next_parameter());
 
         // CO2 command has buggy param definition, so we skip it now
 
         Serial.add_input("co3 12 34 56\n");
 
         EXPECT_TRUE(hc.get_next_command());
-        EXPECT_EQ(hc.get_command_id(), 2);
+        EXPECT_EQ(hc.get_command_id(), 1); // "co2" is not registered, so we have only 2 commands in the list
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_EQ(hc.get_parameter_index(), 0);
         EXPECT_EQ(hc.get_int(), 12);
 
-        EXPECT_TRUE(hc.is_command_complete());
+        EXPECT_FALSE(hc.is_command_complete());
         EXPECT_FALSE(hc.no_more_parameters());
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_EQ(hc.get_parameter_index(), 1);
         EXPECT_EQ(hc.get_int(), 34);
 
         EXPECT_TRUE(hc.is_command_complete());
         EXPECT_FALSE(hc.no_more_parameters());
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_EQ(hc.get_parameter_index(), 2);
         EXPECT_EQ(hc.get_int(), 56);
 
@@ -297,13 +298,13 @@ namespace {
         EXPECT_TRUE(hc.get_next_command());
         EXPECT_EQ(hc.get_command_id(), 0);
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_EQ(hc.get_int(), 123);
 
         EXPECT_TRUE(hc.is_command_complete());
         EXPECT_TRUE(hc.no_more_parameters());
 
-        EXPECT_FALSE(hc.has_next_parameter());
+        EXPECT_FALSE(hc.fetch_next_parameter());
         EXPECT_FALSE(hc.is_invalid_input());
 
         EXPECT_FALSE(hc.get_next_command()); //should skip extra till EOL
@@ -316,18 +317,18 @@ namespace {
         host_command hc(64);
 
         EXPECT_EQ(hc.new_command("C1", "d s"), 2);
-        EXPECT_EQ(hc.new_command("C2", "c d"), 2);
+        EXPECT_EQ(hc.new_command("C2", "s d"), 2);
 
         Serial.add_input("     C1         123       abcd\n");
 
         EXPECT_TRUE(hc.get_next_command());
         EXPECT_EQ(hc.get_command_id(), 0);
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_EQ(hc.get_parameter_index(), 0);
         EXPECT_EQ(hc.get_int(), 123);
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_STREQ(hc.get_str(), "abcd");
 
         EXPECT_TRUE(hc.is_command_complete());
@@ -337,11 +338,11 @@ namespace {
         EXPECT_TRUE(hc.get_next_command());
         EXPECT_EQ(hc.get_command_id(), 1);
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_EQ(hc.get_parameter_index(), 0);
-        EXPECT_EQ(hc.get_byte(), 'A');
+        EXPECT_EQ(*(hc.get_str()), 'A');
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_EQ(hc.get_parameter_index(), 1);
         EXPECT_EQ(hc.get_int(), 2021);
     }
@@ -363,7 +364,7 @@ namespace {
         EXPECT_TRUE(hc.get_next_command());
         EXPECT_STREQ( hc.get_command_name(), "CMD1");
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_TRUE(hc.get_bool());
         EXPECT_EQ(hc.get_parameter_index(), 0);
         EXPECT_TRUE(hc.is_command_complete());
@@ -374,11 +375,11 @@ namespace {
         EXPECT_EQ(hc.get_command_id(), 1);
         EXPECT_STREQ(hc.get_command_name(), "CMD2");
         
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_EQ(hc.get_parameter_index(), 0);
         EXPECT_TRUE(hc.get_bool());
         
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_FALSE(hc.get_bool());
         
         EXPECT_TRUE(hc.is_command_complete());
@@ -389,13 +390,13 @@ namespace {
         EXPECT_EQ(hc.get_command_id(), 2);
         EXPECT_STREQ(hc.get_command_name(), "CMD3");
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_TRUE(hc.get_bool());
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_TRUE(hc.get_bool());
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_TRUE(hc.get_bool());
 
         EXPECT_EQ(hc.get_parameter_index(), 2);
@@ -409,19 +410,19 @@ namespace {
 
         Serial.add_input("000 ");
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_FALSE(hc.get_bool());
 
         Serial.add_input("TRUE ");
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_TRUE(hc.get_bool());
 
         Serial.add_input("nope ");
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_FALSE(hc.get_bool());
 
         Serial.add_input("1\n");
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_TRUE(hc.get_bool());
 
         EXPECT_EQ(hc.get_parameter_index(), 3);
@@ -445,7 +446,7 @@ namespace {
 
         EXPECT_STREQ(hc.get_command_name(), "c1");
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_EQ(hc.get_int(), 1);
         EXPECT_EQ(hc.get_parameter_index(), 0);
         EXPECT_TRUE(hc.is_command_complete());
@@ -455,10 +456,10 @@ namespace {
         EXPECT_TRUE(hc.get_next_command());
         EXPECT_EQ(hc.get_command_id(), 1);
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_EQ(hc.get_int(), 42);
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_EQ(hc.get_int(), 1234567);
 
         EXPECT_TRUE(hc.is_command_complete());
@@ -468,13 +469,13 @@ namespace {
         EXPECT_TRUE(hc.get_next_command());
         EXPECT_EQ(hc.get_command_id(), 2);
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_EQ(hc.get_int(), 123);
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_EQ(hc.get_int(), -9856);
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_EQ(hc.get_int(), 12);
 
         EXPECT_TRUE(hc.is_command_complete());
@@ -484,16 +485,16 @@ namespace {
         EXPECT_TRUE(hc.get_next_command());
         EXPECT_EQ(hc.get_command_id(), 3);
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_EQ(hc.get_int(), 0);
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_EQ(hc.get_int(), 0);
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_EQ(hc.get_int(), 5);
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_EQ(hc.get_int(), 0);
 
         EXPECT_TRUE(hc.is_command_complete());
@@ -514,7 +515,7 @@ namespace {
         EXPECT_TRUE(hc.get_next_command());
         EXPECT_EQ(hc.get_command_id(), 0);
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_FLOAT_EQ(hc.get_float(), 42.0f);
         EXPECT_EQ(hc.get_parameter_index(), 0);
 
@@ -525,10 +526,10 @@ namespace {
         EXPECT_TRUE(hc.get_next_command());
         EXPECT_EQ(hc.get_command_id(), 1);
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_FLOAT_EQ(hc.get_float(), -21.43f);
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_FLOAT_EQ(hc.get_float(), 91234567.0f);
 
         EXPECT_TRUE(hc.is_command_complete());
@@ -538,13 +539,13 @@ namespace {
         EXPECT_TRUE(hc.get_next_command());
         EXPECT_EQ(hc.get_command_id(), 2);
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_FLOAT_EQ(hc.get_float(), 123.0f);
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_FLOAT_EQ(hc.get_float(), 0.98356f);
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_FLOAT_EQ(hc.get_float(), -0.4623f);
 
         EXPECT_TRUE(hc.is_command_complete());
@@ -554,16 +555,16 @@ namespace {
         EXPECT_TRUE(hc.get_next_command());
         EXPECT_EQ(hc.get_command_id(), 3);
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_EQ(hc.get_float(), 12.34e5f);
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_EQ(hc.get_float(), 23.67e-3f);
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_EQ(hc.get_float(), -.000001e12f);
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_EQ(hc.get_float(), 0e1f);
 
         EXPECT_TRUE(hc.is_command_complete());
@@ -583,7 +584,7 @@ namespace {
         EXPECT_TRUE(hc.get_next_command());
         EXPECT_EQ(hc.get_command_id(), 0);
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_EQ(hc.get_parameter_index(), 0);
         EXPECT_STREQ(hc.get_str(), "2021");
         EXPECT_EQ(hc.get_int(), 2021);
@@ -593,11 +594,11 @@ namespace {
         EXPECT_TRUE(hc.get_next_command());
         EXPECT_EQ(hc.get_command_id(), 1);
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_EQ(hc.get_parameter_index(), 0);
         EXPECT_STREQ(hc.get_str(), "1 2");
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_EQ(hc.get_parameter_index(), 1);
         EXPECT_STREQ(hc.get_str(), "3 ");
 
@@ -606,15 +607,15 @@ namespace {
         EXPECT_TRUE(hc.get_next_command());
         EXPECT_EQ(hc.get_command_id(), 2);
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_EQ(hc.get_parameter_index(), 0);
         EXPECT_STREQ(hc.get_str(), " ");
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_EQ(hc.get_parameter_index(), 1);
         EXPECT_STREQ(hc.get_str(), "1234");
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_EQ(hc.get_parameter_index(), 2);
         EXPECT_STREQ(hc.get_str(), "56 78");
 
@@ -625,15 +626,15 @@ namespace {
         EXPECT_TRUE(hc.get_next_command());
         EXPECT_EQ(hc.get_command_id(), 2);
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_EQ(hc.get_parameter_index(), 0);
         EXPECT_STREQ(hc.get_str(), "\\");
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_EQ(hc.get_parameter_index(), 1);
         EXPECT_STREQ(hc.get_str(), "12\\3\\4");
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_EQ(hc.get_parameter_index(), 2);
         EXPECT_STREQ(hc.get_str(), "56\\");
 
@@ -655,7 +656,7 @@ namespace {
         EXPECT_TRUE(hc.get_next_command());
         EXPECT_EQ(hc.get_command_id(), 0);
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_EQ(hc.get_parameter_index(), 0);
         EXPECT_STREQ(hc.get_str(), "42");
 
@@ -664,11 +665,11 @@ namespace {
         EXPECT_TRUE(hc.get_next_command());
         EXPECT_EQ(hc.get_command_id(), 1);
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_EQ(hc.get_parameter_index(), 0);
         EXPECT_STREQ(hc.get_str(), "4\"2");
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_EQ(hc.get_parameter_index(), 1);
         EXPECT_STREQ(hc.get_str(), "5 ' 6");
 
@@ -677,15 +678,15 @@ namespace {
         EXPECT_TRUE(hc.get_next_command());
         EXPECT_EQ(hc.get_command_id(), 2);
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_EQ(hc.get_parameter_index(), 0);
         EXPECT_STREQ(hc.get_str(), "1\n222\n333");
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_EQ(hc.get_parameter_index(), 1);
         EXPECT_STREQ(hc.get_str(), "'4444'");
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_EQ(hc.get_parameter_index(), 2);
         EXPECT_STREQ(hc.get_str(), "\"5\"");
 
@@ -694,11 +695,11 @@ namespace {
         EXPECT_TRUE(hc.get_next_command());
         EXPECT_EQ(hc.get_command_id(), 1);
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_EQ(hc.get_parameter_index(), 0);
         EXPECT_STREQ(hc.get_str(), "'42'");
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_EQ(hc.get_parameter_index(), 1);
         EXPECT_STREQ(hc.get_str(), "\"24\"");
     }
@@ -713,7 +714,7 @@ namespace {
         EXPECT_TRUE(hc.get_next_command());
         EXPECT_EQ(hc.get_command_id(), 0);
 
-        EXPECT_FALSE(hc.has_next_parameter());
+        EXPECT_FALSE(hc.fetch_next_parameter());
         EXPECT_STREQ(hc.get_str(), "");
 
         EXPECT_TRUE(hc.is_invalid_input());
@@ -722,39 +723,39 @@ namespace {
     //======================================================
     TEST_F(host_commandTest, test_String_Length_Limit)
     {
-        host_command hc(32, &Serial);
+        host_command hc(32, &Serial); // current logic is to have minimal buffer size of 128 bytes, which is enforced in the constructor.
 
-        EXPECT_EQ(hc.new_command("q1", "3q"), 1);
+		EXPECT_EQ(hc.new_command("q1", "127q"), 1); // should fit in 128 - byte buffer
 
-        EXPECT_EQ(hc.new_command("q1bad", "32q"), -1);
+		EXPECT_EQ(hc.new_command("q1bad", "128q"), -1); // too long
 
         EXPECT_EQ(hc.new_command("q2", "10q3s"), 2);
 
-        EXPECT_EQ(hc.new_command("q2bad", "d-1q"), -1);
+        EXPECT_EQ(hc.new_command("q2bad", "d-1q"), -1); // illegal char (no negatives)
 
         EXPECT_EQ(hc.new_command("q3", "1s4q2s"), 3);
 
-        EXPECT_EQ(hc.new_command("q3bad", "b0q"), -1);
+		EXPECT_EQ(hc.new_command("q3bad", "1s0q"), -1); // no zero-length strings allowed
 
         Serial.add_input("q1 '4242'\n");
 
         EXPECT_TRUE(hc.get_next_command());
         EXPECT_EQ(hc.get_command_id(), 0);
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_EQ(hc.get_parameter_index(), 0);
-        EXPECT_STREQ(hc.get_str(), "424");
+        EXPECT_STREQ(hc.get_str(), "4242");
 
         Serial.add_input("q2 'a1b2c3d4e5f6g7' 1a2b3c4d5e6f7g\n");
 
         EXPECT_TRUE(hc.get_next_command());
         EXPECT_EQ(hc.get_command_id(), 1);
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_EQ(hc.get_parameter_index(), 0);
         EXPECT_STREQ(hc.get_str(), "a1b2c3d4e5");
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_EQ(hc.get_parameter_index(), 1);
         EXPECT_STREQ(hc.get_str(), "1a2");
 
@@ -763,15 +764,15 @@ namespace {
         EXPECT_TRUE(hc.get_next_command());
         EXPECT_EQ(hc.get_command_id(), 2);
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_EQ(hc.get_parameter_index(), 0);
         EXPECT_STREQ(hc.get_str(), "A");
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_EQ(hc.get_parameter_index(), 1);
         EXPECT_STREQ(hc.get_str(), "DEFG");
 
-        EXPECT_TRUE(hc.has_next_parameter());
+        EXPECT_TRUE(hc.fetch_next_parameter());
         EXPECT_EQ(hc.get_parameter_index(), 2);
         EXPECT_STREQ(hc.get_str(), "KL");
     }
