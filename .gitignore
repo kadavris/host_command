@@ -364,3 +364,6 @@ FodyWeavers.xsd
 ~AutoRecover.host_command.vcxproj
 
 .tmp/
+host_command/
+*.o
+*.exe
